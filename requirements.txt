@@ -1,0 +1,7 @@
+yfinance
+pandas
+pandas-ta
+python-telegram-bot
+google-genai
+python-dotenv
+requests
