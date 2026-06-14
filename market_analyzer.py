@@ -6,6 +6,14 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import csv
 import os
+import json
+
+def get_current_mode():
+    if os.path.exists("config.json"):
+        with open("config.json", "r") as f:
+            data = json.load(f)
+            return data.get("mode", "MEDIUM").upper()
+    return "MEDIUM"
 
 def get_acb_and_balances():
     if not os.path.exists("trades.csv"):
@@ -39,24 +47,48 @@ def get_acb_and_balances():
                     
     return positions
 
-def get_stock_data(ticker_symbol):
+def get_stock_data(ticker_symbol, mode="MEDIUM"):
     try:
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="6mo")
         if hist.empty:
             return None
             
-        hist.ta.rsi(length=14, append=True)
-        hist.ta.sma(length=50, append=True)
-        
         latest = hist.iloc[-1]
         
-        return {
-            "Price": round(latest["Close"], 2),
-            "Volume": int(latest["Volume"]),
-            "RSI_14": round(latest["RSI_14"], 2) if "RSI_14" in latest else "N/A",
-            "SMA_50": round(latest["SMA_50"], 2) if "SMA_50" in latest else "N/A"
-        }
+        if mode == "SHORT":
+            hist.ta.ema(length=5, append=True)
+            hist.ta.ema(length=9, append=True)
+            hist.ta.rsi(length=7, append=True)
+            hist.ta.atr(length=5, append=True)
+            latest = hist.iloc[-1]
+            return {
+                "Price": round(latest["Close"], 2),
+                "Volume": int(latest["Volume"]),
+                "EMA_5": round(latest["EMA_5"], 2) if "EMA_5" in latest else "N/A",
+                "EMA_9": round(latest["EMA_9"], 2) if "EMA_9" in latest else "N/A",
+                "RSI_7": round(latest["RSI_7"], 2) if "RSI_7" in latest else "N/A",
+                "ATR_5": round(latest["ATRr_5"], 2) if "ATRr_5" in latest else "N/A"
+            }
+        else:
+            hist.ta.rsi(length=14, append=True)
+            hist.ta.sma(length=50, append=True)
+            latest = hist.iloc[-1]
+            
+            info = ticker.info
+            ex_div_timestamp = info.get("exDividendDate")
+            if ex_div_timestamp:
+                ex_div_date = datetime.datetime.fromtimestamp(ex_div_timestamp).strftime('%Y-%m-%d')
+            else:
+                ex_div_date = "N/A"
+            
+            return {
+                "Price": round(latest["Close"], 2),
+                "Volume": int(latest["Volume"]),
+                "RSI_14": round(latest["RSI_14"], 2) if "RSI_14" in latest else "N/A",
+                "SMA_50": round(latest["SMA_50"], 2) if "SMA_50" in latest else "N/A",
+                "Ex_Div_Date": ex_div_date
+            }
     except Exception as e:
         return f"Error fetching {ticker_symbol}: {e}"
 
@@ -92,7 +124,11 @@ def get_compartmentalized_news():
     return news_output.strip()
 
 def generate_dossier():
-    dossier = "=== TSX TRADING ADVISOR DOSSIER ===\n"
+    mode = get_current_mode()
+    mode_display = "SHORT TERM (1-WEEK HORIZON)" if mode == "SHORT" else "MEDIUM TERM"
+    
+    dossier = f"=== CURRENT MODE: {mode_display} ===\n"
+    dossier += "=== TSX TRADING ADVISOR DOSSIER ===\n"
     dossier += f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
     
     positions = get_acb_and_balances()
@@ -101,10 +137,10 @@ def generate_dossier():
     tickers = ["CNQ.TO", "ABX.TO"]
     
     for t in tickers:
-        market_data = get_stock_data(t)
+        market_data = get_stock_data(t, mode)
         pos = positions.get(t, {"shares": 0.0, "acb": 0.0})
         
-        current_price = market_data['Price'] if isinstance(market_data, dict) else "N/A"
+        current_price = market_data.get('Price', "N/A") if isinstance(market_data, dict) else "N/A"
         shares = pos['shares']
         
         if shares > 0:
@@ -117,8 +153,15 @@ def generate_dossier():
         dossier += f"  - Avg Purchase Price: {acb_str}\n"
         dossier += f"  - Current Market Price: ${current_price:.2f}\n"
         if isinstance(market_data, dict):
-            dossier += f"  - RSI (14-day): {market_data.get('RSI_14', 'N/A')}\n"
-            dossier += f"  - SMA (50-day): ${market_data.get('SMA_50', 'N/A')}\n"
+            if mode == "SHORT":
+                dossier += f"  - EMA (5-day): ${market_data.get('EMA_5', 'N/A')}\n"
+                dossier += f"  - EMA (9-day): ${market_data.get('EMA_9', 'N/A')}\n"
+                dossier += f"  - RSI (7-day): {market_data.get('RSI_7', 'N/A')}\n"
+                dossier += f"  - ATR (5-day): ${market_data.get('ATR_5', 'N/A')}\n"
+            else:
+                dossier += f"  - Next Ex-Dividend Date: {market_data.get('Ex_Div_Date', 'N/A')}\n"
+                dossier += f"  - RSI (14-day): {market_data.get('RSI_14', 'N/A')}\n"
+                dossier += f"  - SMA (50-day): ${market_data.get('SMA_50', 'N/A')}\n"
         dossier += "\n"
     
     dossier += "--- QUALITATIVE DATA (10 Recent Headlines per Topic) ---\n"

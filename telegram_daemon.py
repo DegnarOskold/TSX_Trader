@@ -83,6 +83,63 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Gemini API key not configured. Cannot parse message.")
         return
         
+    user_text_lower = user_text.strip().lower()
+    
+    if user_text_lower == "change mode":
+        await update.message.reply_text("⚙️ Please reply with either 'Short Term Mode' or 'Medium Term Mode'.")
+        return
+        
+    if user_text_lower in ["short term mode", "medium term mode"]:
+        new_mode = "SHORT" if user_text_lower == "short term mode" else "MEDIUM"
+        with open("config.json", "w") as f:
+            json.dump({"mode": new_mode}, f)
+        await update.message.reply_text(f"✅ Operating mode successfully updated to: {new_mode} TERM.")
+        return
+        
+    if user_text_lower in ["analyze", "analysis"]:
+        await update.message.reply_text("🤖 Generating on-demand analysis. Please wait a moment...")
+        
+        try:
+            current_dossier = generate_dossier()
+        except Exception as e:
+            await update.message.reply_text(f"❌ Could not generate live dossier: {e}")
+            return
+            
+        mode = "MEDIUM"
+        if os.path.exists("config.json"):
+            with open("config.json", "r") as f:
+                mode = json.load(f).get("mode", "MEDIUM").upper()
+                
+        if mode == "SHORT":
+            prompt = f"""
+            You are a ruthless, aggressive short-term momentum day-trader. 
+            Read the following live market dossier:
+            {current_dossier}
+            
+            Your goal is to maximize short-term capital gains over a 5-to-7 day trading window. Ignore long-term valuation metrics. Focus strictly on immediate momentum, volume breakouts, EMA crosses, ATR, and breaking news catalysts.
+            
+            Generate a short trading recommendation for CNQ.TO and ABX.TO. Format your message to clearly show the Average Purchase Price vs Current Price. Do NOT list the technical indicators (EMA, RSI, ATR) as bullet points or scores. However, you MUST reference them naturally within your reasoning if they dictate your trade.
+            """
+        else:
+            prompt = f"""
+            You are an expert TSX trading advisor. Read the following live market dossier:
+            {current_dossier}
+            
+            Generate a short trading recommendation for CNQ.TO and ABX.TO. Format your message to clearly show the Average Purchase Price vs Current Price. Do NOT list RSI, SMA, or Ex-Dividend Date as bullet points or scores. However, you MAY reference them naturally within your recommendation paragraph if they heavily influence your decision.
+            """
+        
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            await update.message.reply_text(response.text)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Failed to generate analysis: {e}")
+            
+        return
+
+        
     try:
         current_dossier = generate_dossier()
     except Exception as e:
