@@ -112,11 +112,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
         if mode == "SHORT":
             prompt = f"""
-            You are a ruthless, aggressive short-term momentum day-trader. 
+            You are a highly professional, analytical short-term quantitative trading advisor. 
             Read the following live market dossier:
             {current_dossier}
             
-            Your goal is to maximize short-term capital gains over a 5-to-7 day trading window. Ignore long-term valuation metrics. Focus strictly on immediate momentum, volume breakouts, EMA crosses, ATR, and breaking news catalysts.
+            Your objective is to identify short-term capital gains over a 5-to-7 day trading window using quantitative metrics. Ignore long-term valuation metrics. Base your analysis objectively on immediate momentum, volume anomalies, technical crossovers (EMA/Bollinger), and breaking macroeconomic news catalysts. Maintain a calm, objective, and highly professional tone at all times.
             
             Generate a short trading recommendation for CNQ.TO and ABX.TO. Format your message to clearly show the Average Purchase Price vs Current Price. Do NOT list the technical indicators (EMA, RSI, ATR) as bullet points or scores. However, you MUST reference them naturally within your reasoning if they dictate your trade.
             """

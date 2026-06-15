@@ -61,14 +61,29 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
             hist.ta.ema(length=9, append=True)
             hist.ta.rsi(length=7, append=True)
             hist.ta.atr(length=5, append=True)
+            hist.ta.bbands(length=20, std=2, append=True)
+            
             latest = hist.iloc[-1]
+            vol_sma_10 = hist["Volume"].rolling(window=10).mean().iloc[-1]
+            vol_ratio = (latest["Volume"] / vol_sma_10) if vol_sma_10 > 0 else 1.0
+            
+            # The column names for BBands in pandas_ta can be quirky (e.g., BBL_20_2.0_2.0 or BBL_20_2.0)
+            # Find them dynamically
+            bb_lower_col = [c for c in hist.columns if c.startswith("BBL_")][0] if any(c.startswith("BBL_") for c in hist.columns) else None
+            bb_mid_col = [c for c in hist.columns if c.startswith("BBM_")][0] if any(c.startswith("BBM_") for c in hist.columns) else None
+            bb_upper_col = [c for c in hist.columns if c.startswith("BBU_")][0] if any(c.startswith("BBU_") for c in hist.columns) else None
+
             return {
                 "Price": round(latest["Close"], 2),
                 "Volume": int(latest["Volume"]),
+                "Vol_Ratio": round(vol_ratio, 2),
                 "EMA_5": round(latest["EMA_5"], 2) if "EMA_5" in latest else "N/A",
                 "EMA_9": round(latest["EMA_9"], 2) if "EMA_9" in latest else "N/A",
                 "RSI_7": round(latest["RSI_7"], 2) if "RSI_7" in latest else "N/A",
-                "ATR_5": round(latest["ATRr_5"], 2) if "ATRr_5" in latest else "N/A"
+                "ATR_5": round(latest["ATRr_5"], 2) if "ATRr_5" in latest else "N/A",
+                "BB_Lower": round(latest[bb_lower_col], 2) if bb_lower_col else "N/A",
+                "BB_Mid": round(latest[bb_mid_col], 2) if bb_mid_col else "N/A",
+                "BB_Upper": round(latest[bb_upper_col], 2) if bb_upper_col else "N/A"
             }
         else:
             hist.ta.rsi(length=14, append=True)
@@ -128,8 +143,16 @@ def generate_dossier():
     mode_display = "SHORT TERM (1-WEEK HORIZON)" if mode == "SHORT" else "MEDIUM TERM"
     
     dossier = f"=== CURRENT MODE: {mode_display} ===\n"
+    
+    if mode == "SHORT":
+        dossier += "=== SYSTEM AI INSTRUCTIONS (SHORT TERM MODE) ===\n"
+        dossier += "1. Mean Reversion: If a stock is trading near or below its Lower Bollinger Band (BB_Lower), it is mathematically 'stretched'. Expect a short-term snap-back rally.\n"
+        dossier += "2. Volume Shock: If Vol_Ratio is > 2.0 (Volume is 2x normal) during a drop, this is 'Capitulation' (panic selling is exhausted). This is a bullish reversal signal.\n"
+        dossier += "3. Market Open Volatility: If the current time is before 9:30 AM ET, DO NOT recommend buying immediately at open. Retail panic and HFT bots cause massive, irrational gaps. Recommend waiting 30 minutes for the 'Gap and Snap-Back' or 'Gap and Crap' to settle before executing trades.\n"
+        dossier += "4. Finalized Macro Events: If headlines indicate a deal is reached or finalized, anticipate that markets have already priced it in. Expect traders to take profits and the asset to move inversely to the immediate sentiment of the headline. Factor this into your reasoning naturally without explicitly quoting these instructions or using jargon like 'Sell the News'.\n\n"
+
     dossier += "=== TSX TRADING ADVISOR DOSSIER ===\n"
-    dossier += f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    dossier += f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ET\n\n"
     
     positions = get_acb_and_balances()
     
@@ -154,10 +177,14 @@ def generate_dossier():
         dossier += f"  - Current Market Price: ${current_price:.2f}\n"
         if isinstance(market_data, dict):
             if mode == "SHORT":
+                dossier += f"  - Vol Ratio (10-day): {market_data.get('Vol_Ratio', 'N/A')}x\n"
                 dossier += f"  - EMA (5-day): ${market_data.get('EMA_5', 'N/A')}\n"
                 dossier += f"  - EMA (9-day): ${market_data.get('EMA_9', 'N/A')}\n"
                 dossier += f"  - RSI (7-day): {market_data.get('RSI_7', 'N/A')}\n"
                 dossier += f"  - ATR (5-day): ${market_data.get('ATR_5', 'N/A')}\n"
+                dossier += f"  - Bollinger Lower (20): ${market_data.get('BB_Lower', 'N/A')}\n"
+                dossier += f"  - Bollinger Mid (20): ${market_data.get('BB_Mid', 'N/A')}\n"
+                dossier += f"  - Bollinger Upper (20): ${market_data.get('BB_Upper', 'N/A')}\n"
             else:
                 dossier += f"  - Next Ex-Dividend Date: {market_data.get('Ex_Div_Date', 'N/A')}\n"
                 dossier += f"  - RSI (14-day): {market_data.get('RSI_14', 'N/A')}\n"
