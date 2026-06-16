@@ -15,6 +15,13 @@ def get_current_mode():
             return data.get("mode", "MEDIUM").upper()
     return "MEDIUM"
 
+def get_tickers():
+    if os.path.exists("config.json"):
+        with open("config.json", "r") as f:
+            data = json.load(f)
+            return data.get("tickers", ["CNQ.TO", "ABX.TO"])
+    return ["CNQ.TO", "ABX.TO"]
+
 def get_acb_and_balances():
     if not os.path.exists("trades.csv"):
         return {}
@@ -157,7 +164,7 @@ def generate_dossier():
     positions = get_acb_and_balances()
     
     dossier += "--- PORTFOLIO & PRICING ---\n"
-    tickers = ["CNQ.TO", "ABX.TO"]
+    tickers = get_tickers()
     
     for t in tickers:
         market_data = get_stock_data(t, mode)

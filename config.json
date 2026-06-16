@@ -1,1 +1,7 @@
-{"mode": "SHORT"}
+{
+    "mode": "SHORT",
+    "tickers": [
+        "CNQ.TO",
+        "ABX.TO",
+    ]
+}

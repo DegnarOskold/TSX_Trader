@@ -106,10 +106,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         mode = "MEDIUM"
+        tickers = ["CNQ.TO", "ABX.TO"]
         if os.path.exists("config.json"):
             with open("config.json", "r") as f:
-                mode = json.load(f).get("mode", "MEDIUM").upper()
+                data = json.load(f)
+                mode = data.get("mode", "MEDIUM").upper()
+                tickers = data.get("tickers", ["CNQ.TO", "ABX.TO"])
                 
+        tickers_str = ", ".join(tickers)
         if mode == "SHORT":
             prompt = f"""
             You are a highly professional, analytical short-term quantitative trading advisor. 
@@ -118,14 +122,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             Your objective is to identify short-term capital gains over a 5-to-7 day trading window using quantitative metrics. Ignore long-term valuation metrics. Base your analysis objectively on immediate momentum, volume anomalies, technical crossovers (EMA/Bollinger), and breaking macroeconomic news catalysts. Maintain a calm, objective, and highly professional tone at all times.
             
-            Generate a short trading recommendation for CNQ.TO and ABX.TO. Format your message to clearly show the Average Purchase Price vs Current Price. Do NOT list the technical indicators (EMA, RSI, ATR) as bullet points or scores. However, you MUST reference them naturally within your reasoning if they dictate your trade.
+            Format your message precisely as follows:
+            1. Brief introduction.
+            2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER).
+            3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend holding or avoiding. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Do NOT list the technical indicators as bullet points; integrate them naturally into your reasoning.
             """
         else:
             prompt = f"""
             You are an expert TSX trading advisor. Read the following live market dossier:
             {current_dossier}
             
-            Generate a short trading recommendation for CNQ.TO and ABX.TO. Format your message to clearly show the Average Purchase Price vs Current Price. Do NOT list RSI, SMA, or Ex-Dividend Date as bullet points or scores. However, you MAY reference them naturally within your recommendation paragraph if they heavily influence your decision.
+            Format your message precisely as follows:
+            1. Brief introduction.
+            2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER).
+            3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend holding or avoiding. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Integrate Ex-Dividend Dates and SMAs naturally into your reasoning without using bullet points.
             """
         
         try:
