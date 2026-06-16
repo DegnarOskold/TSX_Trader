@@ -1,7 +1,13 @@
 {
     "mode": "SHORT",
-    "tickers": [
-        "CNQ.TO",
-        "ABX.TO",
-    ]
+    "portfolio": {
+        "CNQ.TO": [
+            "CNQ.TO",
+            "CL=F"
+        ],
+        "ABX.TO": [
+            "ABX.TO",
+            "GC=F"
+        ]
+    }
 }

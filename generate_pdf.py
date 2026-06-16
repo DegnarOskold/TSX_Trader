@@ -38,40 +38,36 @@ Every hour, the system securely connects to Yahoo Finance. It pulls the exact, l
 
 These momentum indicators tell the AI if a stock is mathematically "overbought" or "oversold," or if it is breaking critical historical support lines.
 
-Dynamic Ledger Management
+Dynamic Ledger & Cash Constraints
 Knowing the current price of a stock is only helpful if you know what you originally paid for it. The system maintains a private, automated CSV ledger that records every trade you make. 
 
-Using this ledger, the system constantly calculates your Adjusted Cost Base (ACB). By comparing the live market price to your exact ACB, the system instantly knows if you are sitting on a profit or a loss. It also tracks your exact cash balance, ensuring it never recommends a trade you don't have the funds to execute.
+Using this ledger, the system constantly calculates your Adjusted Cost Base (ACB). It also tracks your exact Available Free Cash. The AI operates under strict instructions: it will never recommend a BUY action if your ledger shows insufficient free cash to execute the trade, protecting you from over-leveraging.
 """
 
     # ---------------- PAGE 3 ----------------
     page_3 = """
 3. The Qualitative Side: Understanding Micro News
 
-While the numbers tell us what a stock is worth right now, the news tells us where the stock might be heading tomorrow. This is called Qualitative Analysis. 
+While the numbers tell us what a stock is worth right now, the news tells us where the stock might be heading tomorrow. This is called Qualitative Analysis. The system specifically targets and pulls the 10 most recent news headlines for each individual asset in your portfolio. We call this "Micro News."
 
-The system doesn't just look at a generic news feed. It specifically targets and pulls the 10 most recent news headlines for each individual asset you own. We call this "Micro News."
+Dynamic & Sector-Agnostic Feeds
+The system is completely sector-agnostic. Instead of hardcoding specific stocks, it reads your portfolio configuration and dynamically fetches the exact RSS feeds required for your holdings. 
 
-Company-Specific Headlines
-By pulling news directly related to CNQ.TO or ABX.TO, the system is looking for direct catalysts. These are specific events that directly impact the company's bottom line. 
-
-For example, the system will pick up on headlines about a new earnings report, a change in the company's leadership, an analyst upgrading the stock's rating, or a successful new drilling project. 
-
-These qualitative metrics are crucial. A stock's price might be dropping today, but if the system reads a headline that the company just discovered a massive new gold deposit, it knows that the long-term outlook is actually very positive.
+For example, the system will pick up on headlines about a new earnings report, a change in leadership, or an analyst upgrading a stock's rating. These qualitative metrics are crucial. A stock's price might be dropping today, but if the system reads a headline about a massive new contract, it knows the long-term outlook is positive.
 """
 
     # ---------------- PAGE 4 ----------------
     page_4 = """
 4. The Qualitative Side: Understanding Macro News
 
-Looking only at company-specific news is not enough. Stocks do not exist in a vacuum; they are heavily influenced by the broader global economy. To capture this, the system also pulls headlines for major commodities, specifically WTI Crude Oil and Spot Gold. We call this "Macro News."
+Looking only at company-specific news is not enough. Stocks do not exist in a vacuum; they are heavily influenced by the broader global economy. To capture this, the system allows you to pair Macro topics with your stock holdings.
 
 Global Events and Sentiment
 The system monitors these broader topics to understand global market sentiment. 
 
-For example, geopolitical tensions in the Middle East will often cause Crude Oil prices to spike. When the system reads headlines about these global tensions, it understands the underlying economic metric: global oil supply is threatened, so oil prices are rising.
+For example, if you hold an energy stock, you can configure the system to also pull WTI Crude Oil headlines. When the system reads headlines about geopolitical tensions, it understands the underlying economic metric: global oil supply is threatened.
 
-Because you own Canadian Natural Resources (an oil company), the system connects these dots. It recognizes that even if CNQ hasn't released any company news today, the broader Macro environment for oil is highly bullish. This global qualitative data is often the strongest indicator of how a resource stock will perform in the coming days.
+The AI connects these dots. It recognizes that even if your specific company hasn't released news today, the broader Macro environment is highly bullish. This global qualitative data is often the strongest indicator of how an asset will perform in the coming days.
 """
 
     # ---------------- PAGE 5 ----------------
@@ -80,12 +76,12 @@ Because you own Canadian Natural Resources (an oil company), the system connects
 
 With all the numbers (Quantitative) and the news (Qualitative) gathered, the system must now make a decision. To do this, it packages all this data into a "Dossier" and hands it to a Large Language Model (LLM) - an advanced AI that can read and reason like a human.
 
-Weighing Conflicting Information
+Weighing Conflicting Information & Advice History
 The AI acts as your central analyst. Its greatest strength is its ability to weigh conflicting information between technical indicators and fundamental news.
 
-Imagine your Canadian Natural Resources stock has dropped below its 50-day Simple Moving Average, and its RSI indicates it is being heavily sold off (negative Quantitative metrics). However, the AI reads the latest headlines and sees that global oil prices are surging due to an international supply shortage (a positive Qualitative metric). 
+Traditional computer programs would just see a failing technical indicator and tell you to sell. But our AI reads the context. It synthesizes the data and realizes the stock's technical drop is unwarranted given the global news, formulating a high-conviction recommendation to HOLD.
 
-Traditional computer programs would just see a failing technical indicator and tell you to sell. But our AI reads the context. It synthesizes the data and realizes the stock's technical drop is unwarranted given the global news. Instead of panicking, it formulates a high-conviction recommendation to HOLD your position, relying entirely on data rather than emotion.
+Furthermore, the system is context-aware. It maintains a rolling, self-cleaning Daily Advice History covering the last 5 business days. When the AI generates a new dossier, it reads its own past advice, ensuring its trading thesis remains consistent and logical throughout the week.
 """
 
     # ---------------- PAGE 6 ----------------
@@ -94,13 +90,13 @@ Traditional computer programs would just see a failing technical indicator and t
 
 The final step is delivering this advice to you and executing your trades. We designed this to be as easy as texting a friend, using the secure Telegram messaging app on your phone.
 
-Hourly Push Notifications
-Using an automated background scheduler, the system wakes up every hour while the stock market is open. It runs the entire analysis process described above in just a few seconds and sends you a text message with its final recommendation.
+Background Schedulers & End of Day Summaries
+The system uses background cron jobs to stay fully engaged. It sends you actionable, intraday trading recommendations every hour. Then, precisely at 4:05 PM ET after the market closes, it shifts gears: it suppresses active trading advice and delivers a comprehensive End-of-Day Summary, reviewing your portfolio's daily performance and outlining expectations for tomorrow.
 
-Conversational Trade Tracking
-If you decide to follow the AI's advice and sell a stock, you don't have to log into a complicated accounting software to record the trade. You simply reply to the Telegram message with a normal sentence, like: "Okay, I sold 20 shares of CNQ at $63.40."
+Conversational Trade Tracking & Confirmations
+To record a trade, simply reply to the bot: "I sold 20 shares at $63.40." The AI uses a highly-optimized, Two-Step Verification process to instantly extract the trade intent without burning excess API tokens. 
 
-A background program is always listening. The AI reads your casual text message, extracts the exact ticker, price, and quantity, and automatically updates your ledger for you. It recalculates your cash balance and your new Cost Base instantly. This creates a fully automated, closed-loop system where you get all the benefits of an active trading desk with none of the administrative friction.
+Before modifying your ledger, the system stages the trade in memory and explicitly asks you for confirmation (YES/NO). Once confirmed, it updates your CSV ledger and recalculates your cost base in real-time, creating a fully automated, risk-free trading desk experience.
 """
 
     pages = [page_1, page_2, page_3, page_4, page_5, page_6]

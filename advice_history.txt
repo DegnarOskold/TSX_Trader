@@ -1,0 +1,19 @@
+[2026-06-14 15:30:00]
+1. SELL CNQ.TO
+Taking profits at the end of the day.
+
+[2026-06-16 15:30:00]
+1. BUY CNQ.TO
+
+CNQ.TO: Trading at $60.12, the stock is currently compressed below its lower Bollinger Band of $60.42 with an extremely oversold RSI of 26.80. Since the bearish oil supply news from the US-Iran deal is fully absorbed, we anticipate strong inverse price action in the coming sessions. Adding to the position before the market closes creates a highly favorable asymmetric setup for a short-term snap-back rally.
+
+[2026-06-16 16:05:19]
+1. End of Day Market Summary
+Broader energy markets experienced late-day weakness as crude oil fell to a three-month low, largely driven by the anticipated supply increase from the finalized US-Iran framework. In contrast, safe-haven gold remained steady despite easing inflation worries.
+
+2. Portfolio Performance
+CNQ.TO: The position of 102.27 shares closed at $60.64, slightly below the average purchase price of $60.94. The asset experienced elevated volume (1.53x average) and remains in deeply oversold territory with an RSI of 28.71, positioning it well for our targeted mean-reversion strategy.
+
+3. Outlook Ahead
+Given the elevated volume on todays dip and extreme oversold conditions in CNQ, we anticipate the initial panic selling over the US-Iran deal is nearing exhaustion. Expect a potential snap-back rally tomorrow morning as the market fully digests the finalized news and technical algorithms target the stretched lower Bollinger Bands.
+

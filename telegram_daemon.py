@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from google.genai import types
-from market_analyzer import generate_dossier
+from market_analyzer import generate_dossier, get_analysis_prompt, get_tickers
 
 load_dotenv()
 
@@ -21,47 +21,56 @@ if GEMINI_API_KEY:
 else:
     client = None
 
+# Global state for pending trades
+pending_trades = {}
+
+async def send_chunked_reply(update, text):
+    """Telegram limits messages to 4096 characters. Chunk safely."""
+    chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+    for chunk in chunks:
+        await update.message.reply_text(chunk)
+
 def get_latest_balances():
+    """Scan trades.csv and return the last known share balance for each ticker, plus cash."""
     if not os.path.exists(TRADES_FILE):
-        return {"CNQ": 0.0, "ABX": 0.0, "Cash": 0.0}
+        return {"positions": {}, "cash": 0.0}
     with open(TRADES_FILE, 'r') as f:
         reader = list(csv.DictReader(f))
         if len(reader) == 0:
-            return {"CNQ": 0.0, "ABX": 0.0, "Cash": 0.0}
-        last_row = reader[-1]
-        return {
-            "CNQ": float(last_row.get("CNQ_Balance", 0)),
-            "ABX": float(last_row.get("ABX_Balance", 0)),
-            "Cash": float(last_row.get("Cash_Balance", 0))
-        }
+            return {"positions": {}, "cash": 0.0}
+        
+        # Find last Shares_Balance for each unique ticker
+        positions = {}
+        cash = 0.0
+        for row in reader:
+            ticker = row.get("Ticker", "")
+            shares_bal = row.get("Shares_Balance")
+            cash_bal = row.get("Cash_Balance")
+            if ticker and shares_bal is not None:
+                positions[ticker] = float(shares_bal)
+            if cash_bal is not None:
+                cash = float(cash_bal)
+        
+        return {"positions": positions, "cash": round(cash, 2)}
 
 def update_ledger(action, ticker, quantity, price):
     balances = get_latest_balances()
-    cnq_bal = balances["CNQ"]
-    abx_bal = balances["ABX"]
-    cash_bal = balances["Cash"]
+    positions = balances["positions"]
+    cash_bal = balances["cash"]
     
-    cost = quantity * price
-    ticker_clean = ticker.upper().replace(".TO", "")
+    cost = round(quantity * price, 2)
+    current_shares = positions.get(ticker, 0.0)
     
     if action == "BUY":
         if cash_bal < cost:
             raise ValueError(f"Insufficient cash! Cost: ${cost:.2f}, Cash: ${cash_bal:.2f}")
-        cash_bal -= cost
-        if ticker_clean == "CNQ":
-            cnq_bal += quantity
-        elif ticker_clean == "ABX":
-            abx_bal += quantity
+        cash_bal = round(cash_bal - cost, 2)
+        current_shares += quantity
     elif action == "SELL":
-        if ticker_clean == "CNQ":
-            if cnq_bal < quantity:
-                raise ValueError(f"Insufficient shares of CNQ. Own: {cnq_bal}, Trying to sell: {quantity}")
-            cnq_bal -= quantity
-        elif ticker_clean == "ABX":
-            if abx_bal < quantity:
-                raise ValueError(f"Insufficient shares of ABX. Own: {abx_bal}, Trying to sell: {quantity}")
-            abx_bal -= quantity
-        cash_bal += cost
+        if current_shares < quantity:
+            raise ValueError(f"Insufficient shares of {ticker}. Own: {current_shares}, Trying to sell: {quantity}")
+        current_shares -= quantity
+        cash_bal = round(cash_bal + cost, 2)
     else:
         raise ValueError("Invalid action. Must be BUY or SELL.")
 
@@ -70,20 +79,40 @@ def update_ledger(action, ticker, quantity, price):
     
     with open(TRADES_FILE, 'a', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([date_str, ticker.upper(), action, quantity, price, cnq_bal, abx_bal, cash_bal])
+        writer.writerow([date_str, ticker.upper(), action, quantity, price, round(current_shares, 4), cash_bal])
         
-    return cnq_bal, abx_bal, cash_bal
+    return {"ticker": ticker, "shares": current_shares, "cash": cash_bal}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Trading Daemon online. Tell me about your trades naturally (e.g., 'I sold 20 CNQ at 45.50').")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
+    chat_id = update.effective_chat.id
+    
     if not client:
         await update.message.reply_text("Gemini API key not configured. Cannot parse message.")
         return
         
     user_text_lower = user_text.strip().lower()
+    
+    # Handle pending trade confirmation
+    if chat_id in pending_trades and user_text_lower in ["yes", "no"]:
+        if user_text_lower == "no":
+            del pending_trades[chat_id]
+            await update.message.reply_text("❌ Trade cancelled.")
+            return
+        
+        # User confirmed YES
+        trade = pending_trades.pop(chat_id)
+        try:
+            result = update_ledger(trade['action'], trade['ticker'], trade['quantity'], trade['price'])
+            msg = f"✅ Confirmed and Recorded: {trade['action']} {trade['quantity']} {trade['ticker']} @ ${trade['price']:.2f}\n"
+            msg += f"{trade['ticker']}: {result['shares']:.4f} shares | Cash: ${result['cash']:.2f}"
+            await update.message.reply_text(msg)
+        except ValueError as ve:
+            await update.message.reply_text(f"❌ Error updating ledger: {str(ve)}")
+        return
     
     if user_text_lower == "change mode":
         await update.message.reply_text("⚙️ Please reply with either 'Short Term Mode' or 'Medium Term Mode'.")
@@ -91,8 +120,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     if user_text_lower in ["short term mode", "medium term mode"]:
         new_mode = "SHORT" if user_text_lower == "short term mode" else "MEDIUM"
+        # Read existing config to preserve other keys (e.g., tickers)
+        config = {}
+        if os.path.exists("config.json"):
+            with open("config.json", "r") as f:
+                config = json.load(f)
+        config["mode"] = new_mode
         with open("config.json", "w") as f:
-            json.dump({"mode": new_mode}, f)
+            json.dump(config, f, indent=4)
         await update.message.reply_text(f"✅ Operating mode successfully updated to: {new_mode} TERM.")
         return
         
@@ -100,66 +135,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🤖 Generating on-demand analysis. Please wait a moment...")
         
         try:
-            current_dossier = generate_dossier()
+            prompt = get_analysis_prompt()
         except Exception as e:
             await update.message.reply_text(f"❌ Could not generate live dossier: {e}")
             return
-            
-        mode = "MEDIUM"
-        tickers = ["CNQ.TO", "ABX.TO"]
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                data = json.load(f)
-                mode = data.get("mode", "MEDIUM").upper()
-                tickers = data.get("tickers", ["CNQ.TO", "ABX.TO"])
-                
-        tickers_str = ", ".join(tickers)
-        if mode == "SHORT":
-            prompt = f"""
-            You are a highly professional, analytical short-term quantitative trading advisor. 
-            Read the following live market dossier:
-            {current_dossier}
-            
-            Your objective is to identify short-term capital gains over a 5-to-7 day trading window using quantitative metrics. Ignore long-term valuation metrics. Base your analysis objectively on immediate momentum, volume anomalies, technical crossovers (EMA/Bollinger), and breaking macroeconomic news catalysts. Maintain a calm, objective, and highly professional tone at all times.
-            
-            Format your message precisely as follows:
-            1. Brief introduction.
-            2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER).
-            3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend holding or avoiding. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Do NOT list the technical indicators as bullet points; integrate them naturally into your reasoning.
-            """
-        else:
-            prompt = f"""
-            You are an expert TSX trading advisor. Read the following live market dossier:
-            {current_dossier}
-            
-            Format your message precisely as follows:
-            1. Brief introduction.
-            2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER).
-            3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend holding or avoiding. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Integrate Ex-Dividend Dates and SMAs naturally into your reasoning without using bullet points.
-            """
+        
+        # Check market hours (M-F, 9:30 AM - 4:00 PM ET)
+        import datetime
+        now = datetime.datetime.now()
+        is_weekend = now.weekday() >= 5
+        market_open = 9 * 60 + 30
+        market_close = 16 * 60
+        current_mins = now.hour * 60 + now.minute
+        is_market_hours = not is_weekend and (market_open <= current_mins <= market_close)
+        
+        warning_prefix = ""
+        if not is_market_hours:
+            warning_prefix = "⚠️ *Note: The market is currently closed. This analysis is based on the last session's closing data.*\n\n"
         
         try:
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt
             )
-            await update.message.reply_text(response.text)
+            await send_chunked_reply(update, warning_prefix + response.text)
+            
+            # Log on-demand analysis
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            with open("advice_history.txt", "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}]\n{response.text}\n\n")
+                
         except Exception as e:
             await update.message.reply_text(f"❌ Failed to generate analysis: {e}")
             
         return
 
         
-    try:
-        current_dossier = generate_dossier()
-    except Exception as e:
-        current_dossier = f"Could not generate live dossier: {e}"
-        
-    prompt = f"""
-    You are a financial AI assistant and trading extraction tool. 
-    You have access to the following live market dossier:
-    {current_dossier}
+    tickers = get_tickers()
+    tickers_str = ", ".join(tickers)
     
+    # Step 1: Lightweight Intent Extraction (Saves API Tokens)
+    prompt_intent = f"""
+    You are a trading extraction tool. 
     The user has sent the following message: "{user_text}"
     
     Determine if the user is logging a TRADE execution or asking a QUESTION.
@@ -168,22 +185,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     If intent is "TRADE", include:
     - action: "BUY" or "SELL"
-    - ticker: "CNQ.TO" or "ABX.TO" (if user says CNQ, assume CNQ.TO)
+    - ticker: The ticker symbol with .TO suffix (valid tickers: {tickers_str}). If the user says just the name without .TO, append .TO.
     - quantity: float
     - price: float
     
-    If intent is "QUESTION", include:
-    - answer: "Your detailed response to the user's question, utilizing the data from the dossier."
-    
     Examples: 
     {{"intent": "TRADE", "action": "SELL", "ticker": "CNQ.TO", "quantity": 20.0, "price": 45.50}}
-    {{"intent": "QUESTION", "answer": "The discounted valuation opportunity for ABX is driven by recent analyst upgrades following the gold sector rotation..."}}
+    {{"intent": "QUESTION"}}
     """
     
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=prompt,
+            contents=prompt_intent,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
             )
@@ -193,8 +207,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent = data.get('intent', 'TRADE')
         
         if intent == "QUESTION":
-            answer = data.get('answer', "I'm sorry, I couldn't formulate an answer to that question.")
-            await update.message.reply_text(f"🤖 {answer}")
+            await update.message.reply_text("🤖 Reading live market data to answer your question...")
+            
+            # Step 2: Heavyweight Dossier Generation (Only when needed)
+            try:
+                current_dossier = generate_dossier()
+            except Exception as e:
+                current_dossier = f"Could not generate live dossier: {e}"
+                
+            prompt_qa = f"""
+            You are a financial AI assistant. 
+            You have access to the following live market dossier:
+            {current_dossier}
+            
+            The user has asked the following question: "{user_text}"
+            
+            Please provide a detailed response to the user's question, utilizing the data from the dossier. Keep it concise.
+            """
+            try:
+                qa_response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt_qa
+                )
+                await send_chunked_reply(update, f"🤖 {qa_response.text}")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Failed to generate answer: {str(e)}")
             return
             
         # Check if the LLM successfully extracted the fields for TRADE
@@ -210,13 +247,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         quantity = float(quantity_raw)
         price = float(price_raw)
         
-        try:
-            cnq_bal, abx_bal, cash_bal = update_ledger(action, ticker, quantity, price)
-            msg = f"✅ Recorded: {action} {quantity} {ticker} @ ${price:.2f}\n"
-            msg += f"Balances -> CNQ: {cnq_bal:.4f} | ABX: {abx_bal:.4f} | Cash: ${cash_bal:.2f}"
-            await update.message.reply_text(msg)
-        except ValueError as ve:
-            await update.message.reply_text(f"❌ Error updating ledger: {str(ve)}")
+        # Store in pending_trades instead of executing immediately
+        pending_trades[chat_id] = {
+            "action": action,
+            "ticker": ticker,
+            "quantity": quantity,
+            "price": price
+        }
+        
+        await update.message.reply_text(f"Did you mean to **{action}** {quantity} shares of **{ticker}** @ **${price:.2f}**?\n\nReply YES to confirm or NO to cancel.")
             
     except Exception as e:
         await update.message.reply_text(f"❌ Failed to parse or process message: {str(e)}")
