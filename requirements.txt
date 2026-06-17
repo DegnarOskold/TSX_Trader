@@ -1,7 +1,8 @@
-yfinance
-pandas
-pandas-ta
-python-telegram-bot
-google-genai
-python-dotenv
+yfinance==1.4.1
+pandas==3.0.1
+pandas-ta==0.4.71b0
+python-telegram-bot==22.8
+google-genai==2.8.0
+python-dotenv==1.2.2
 requests
+fpdf2==2.8.7

@@ -2,12 +2,13 @@ import os
 import csv
 import json
 import asyncio
+import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from google.genai import types
-from market_analyzer import generate_dossier, get_analysis_prompt, get_tickers
+from market_analyzer import generate_dossier, get_analysis_prompt, get_tickers, get_acb_and_balances, log_advice
 
 load_dotenv()
 
@@ -30,36 +31,13 @@ async def send_chunked_reply(update, text):
     for chunk in chunks:
         await update.message.reply_text(chunk)
 
-def get_latest_balances():
-    """Scan trades.csv and return the last known share balance for each ticker, plus cash."""
-    if not os.path.exists(TRADES_FILE):
-        return {"positions": {}, "cash": 0.0}
-    with open(TRADES_FILE, 'r') as f:
-        reader = list(csv.DictReader(f))
-        if len(reader) == 0:
-            return {"positions": {}, "cash": 0.0}
-        
-        # Find last Shares_Balance for each unique ticker
-        positions = {}
-        cash = 0.0
-        for row in reader:
-            ticker = row.get("Ticker", "")
-            shares_bal = row.get("Shares_Balance")
-            cash_bal = row.get("Cash_Balance")
-            if ticker and shares_bal is not None:
-                positions[ticker] = float(shares_bal)
-            if cash_bal is not None:
-                cash = float(cash_bal)
-        
-        return {"positions": positions, "cash": round(cash, 2)}
-
 def update_ledger(action, ticker, quantity, price):
-    balances = get_latest_balances()
+    balances = get_acb_and_balances()
     positions = balances["positions"]
     cash_bal = balances["cash"]
     
     cost = round(quantity * price, 2)
-    current_shares = positions.get(ticker, 0.0)
+    current_shares = positions.get(ticker, {}).get("shares", 0.0)
     
     if action == "BUY":
         if cash_bal < cost:
@@ -74,7 +52,6 @@ def update_ledger(action, ticker, quantity, price):
     else:
         raise ValueError("Invalid action. Must be BUY or SELL.")
 
-    import datetime
     date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     with open(TRADES_FILE, 'a', newline='') as f:
@@ -84,12 +61,27 @@ def update_ledger(action, ticker, quantity, price):
     return {"ticker": ticker, "shares": current_shares, "cash": cash_bal}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Trading Daemon online. Tell me about your trades naturally (e.g., 'I sold 20 CNQ at 45.50').")
+    await update.message.reply_text("Trading Daemon online. Tell me about your trades naturally (e.g., 'I sold 20 CNQ at 45.50'). Send /help for more info.")
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "🤖 **TSX Trading Advisor Help** 🤖\n\n"
+        "Here's what I can do:\n"
+        "1. **Log Trades**: Just tell me naturally (e.g., 'Bought 100 ABX at 23.50').\n"
+        "2. **Analysis**: Send `analyze` or `analysis` to get a full market breakdown and recommendation.\n"
+        "3. **Change Mode**: Send `change mode` to switch between Short and Medium term horizons.\n"
+        "4. **Q&A**: Ask any question about the market or your portfolio, and I'll answer based on the live dossier."
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.effective_chat.id
     
+    if str(chat_id) != os.getenv("TELEGRAM_CHAT_ID"):
+        print(f"Unauthorized access attempt from {chat_id}")
+        return
+        
     if not client:
         await update.message.reply_text("Gemini API key not configured. Cannot parse message.")
         return
@@ -141,7 +133,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         # Check market hours (M-F, 9:30 AM - 4:00 PM ET)
-        import datetime
         now = datetime.datetime.now()
         is_weekend = now.weekday() >= 5
         market_open = 9 * 60 + 30
@@ -161,9 +152,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_chunked_reply(update, warning_prefix + response.text)
             
             # Log on-demand analysis
-            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            with open("advice_history.txt", "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}]\n{response.text}\n\n")
+            log_advice(response.text)
                 
         except Exception as e:
             await update.message.reply_text(f"❌ Failed to generate analysis: {e}")
@@ -268,6 +257,7 @@ def main():
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("Daemon listening for Telegram messages...")

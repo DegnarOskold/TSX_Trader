@@ -2,6 +2,7 @@ import os
 import sys
 import requests
 from dotenv import load_dotenv
+from market_analyzer import log_advice
 
 load_dotenv()
 
@@ -18,6 +19,7 @@ def send_message(text):
     # Telegram max message length is 4096. We chunk at 4000 to be safe.
     chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
     
+    all_success = True
     for chunk in chunks:
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
@@ -27,13 +29,12 @@ def send_message(text):
         response = requests.post(url, json=payload)
         if response.status_code == 200:
             print("Message chunk sent successfully.")
-            # Log the sent message
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            with open("advice_history.txt", "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}]\n{chunk}\n\n")
         else:
             print(f"Failed to send message chunk: {response.text}")
+            all_success = False
+
+    if all_success:
+        log_advice(text)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
