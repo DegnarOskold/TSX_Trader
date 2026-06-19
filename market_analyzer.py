@@ -9,6 +9,9 @@ import os
 import json
 import re
 import time
+import urllib.parse
+from email.utils import parsedate_to_datetime
+from datetime import timezone
 
 def log_advice(text):
     lock_file = "advice.lock"
@@ -198,26 +201,99 @@ def get_compartmentalized_news(config=None):
     # Fallback to default if empty
     if not unique_topics:
         unique_topics = ["CNQ.TO", "ABX.TO", "CL=F", "GC=F"]
+        
+    MACRO_KEYWORDS = ["opec", "fed", "interest rate", "inflation", "gdp", "crude", "gold price", "economy", "bank of canada", "central bank"]
+    EARNINGS_KEYWORDS = ["earnings", "revenue", "profit", "quarterly", "eps", "beat", "miss", "dividend"]
+    ANALYST_KEYWORDS = ["upgrade", "downgrade", "price target", "rating", "analyst", "buy", "sell", "hold"]
     
+    def get_category(text):
+        text_lower = text.lower()
+        if any(kw in text_lower for kw in MACRO_KEYWORDS): return "MACRO"
+        if any(kw in text_lower for kw in EARNINGS_KEYWORDS): return "EARNINGS"
+        if any(kw in text_lower for kw in ANALYST_KEYWORDS): return "ANALYST"
+        return "NEWS"
+
+    now_utc = datetime.datetime.now(timezone.utc)
+    seen_titles = set()
     news_output = ""
+    
     for ticker in unique_topics:
-        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}"
         news_output += f"[{ticker}]\n"
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as response:
-                xml_data = response.read()
-                root = ET.fromstring(xml_data)
+        topic_items = []
+        
+        # Build URLs
+        urls = [
+            f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={urllib.parse.quote(ticker)}",
+            f"https://news.google.com/rss/search?q={urllib.parse.quote(ticker)}&hl=en-CA&gl=CA&ceid=CA:en"
+        ]
+        
+        for url in urls:
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    xml_data = response.read()
+                    root = ET.fromstring(xml_data)
+                    for item in root.findall('./channel/item'):
+                        title_el = item.find('title')
+                        pubdate_el = item.find('pubDate')
+                        desc_el = item.find('description')
+                        
+                        if title_el is None or pubdate_el is None or not title_el.text or not pubdate_el.text:
+                            continue
+                            
+                        title = title_el.text.strip()
+                        if title in seen_titles:
+                            continue
+                            
+                        try:
+                            dt = parsedate_to_datetime(pubdate_el.text)
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            hours_ago = (now_utc - dt).total_seconds() / 3600
+                        except Exception:
+                            continue
+                            
+                        if hours_ago > 48 or hours_ago < 0:
+                            continue
+                            
+                        seen_titles.add(title)
+                        desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
+                        
+                        # Clean HTML from description if present
+                        desc = re.sub(r'<[^>]+>', '', desc)
+                        desc = desc[:200] + "..." if len(desc) > 200 else desc
+                        
+                        cat = get_category(title + " " + desc)
+                        
+                        # Freshness indicator
+                        if hours_ago < 4: fresh_icon = "NEW"
+                        elif hours_ago < 12: fresh_icon = "RECENT"
+                        else: fresh_icon = "OLD"
+                        
+                        topic_items.append({
+                            "title": title,
+                            "desc": desc,
+                            "hours_ago": hours_ago,
+                            "fresh_icon": fresh_icon,
+                            "cat": cat
+                        })
+            except Exception as e:
+                pass
                 
-                items = root.findall('./channel/item')[:10]
-                if not items:
-                    news_output += "- No recent news found.\n"
-                for item in items:
-                    title = item.find('title').text
-                    pubDate = item.find('pubDate').text
-                    news_output += f"- {title} ({pubDate})\n"
-        except Exception as e:
-            news_output += f"- Error fetching news: {e}\n"
+        # Sort items by recency
+        topic_items.sort(key=lambda x: x["hours_ago"])
+        topic_items = topic_items[:10] # Top 10 freshest
+        
+        if not topic_items:
+            news_output += "- No recent news found.\n"
+        else:
+            for item in topic_items:
+                news_output += f"- [{item['fresh_icon']} {int(item['hours_ago'])}h ago] [{item['cat']}] {item['title']}\n"
+                if item['desc']:
+                    # don't duplicate title in description (google news often does this)
+                    if not item['desc'].startswith(item['title'][:50]):
+                        news_output += f"  Summary: {item['desc']}\n"
+                        
         news_output += "\n"
         
     return news_output.strip()
@@ -272,7 +348,7 @@ def get_cleaned_advice_history():
     history_entries = []
     for date_str in sorted(grouped.keys()):
         if date_str == today_str:
-            history_entries.extend(grouped[date_str][-5:]) # Keep only last 5 from today for the LLM
+            history_entries.extend(grouped[date_str]) # Keep all from today for the LLM
         elif date_str in dates_to_keep:
             history_entries.append(grouped[date_str][-1])
             
@@ -368,7 +444,8 @@ def generate_dossier():
         for ticker_list in portfolio.values():
             for topic in ticker_list:
                 if topic not in tickers and topic not in macro_topics:
-                    macro_topics.append(topic)
+                    if re.match(r'^[A-Z0-9=.-]+$', topic):
+                        macro_topics.append(topic)
                     
     if macro_topics:
         dossier += f"--- MACRO COMMODITIES ---\n"
@@ -413,7 +490,7 @@ System Instructions:
 1. Trend Validation (No Falling Knives): If a stock is trading near or below its Lower Bollinger Band BUT its 5-day EMA is below its 9-day EMA, it is in a strong downtrend. Do NOT assume an immediate snap-back rally. Wait for a bullish crossover or volume shock.
 2. Volume Shock: If Vol_Ratio is > 2.0 (Volume is 2x normal) during a drop, this is 'Capitulation' (panic selling is exhausted). This is a bullish reversal signal.
 3. Market Open Volatility: If the current time is before 9:30 AM ET, DO NOT recommend buying immediately at open. Retail panic and HFT bots cause massive, irrational gaps. Recommend waiting 30 minutes.
-4. Finalized Macro Events: If headlines indicate a deal is reached, anticipate markets have already priced it in. Factor this into your reasoning naturally without using jargon like 'Sell the News'.
+4. Anticipatory Macro Shifts (Buy the Rumor, Sell the News): Do not wait for a deal to be finalized or signed before adjusting your thesis. If the qualitative RSS headlines or macro commodity trackers (CL=F, GC=F) strongly signal a high-probability calendar event, formal signing ceremony, or geopolitical shift within the next 24 to 48 hours, prioritize this upcoming macro momentum. If the impending event removes a market premium or changes commodity fundamentals, override short-term "oversold" technical indicators (like 7-day RSI and Bollinger Bands) and favor defensive capital preservation (HOLD or SELL) rather than assuming an immediate mean-reversion rally.
 5. Cash Constraint: You must check the Available Free Cash before recommending a BUY. If there is insufficient free cash to purchase a meaningful position, you must NOT recommend a BUY action.
 6. Position Sizing (Tranching): If recommending an accumulation BUY, instruct the user to "Buy in Tranches" (e.g., deploy 25% of free cash) rather than buying all at once.
 7. Protective Stop-Loss for Holds: If the current market price of an existing HOLD position drops more than {stop_loss}% below its Avg Purchase Price, you MUST explicitly recommend to SELL to cut losses, regardless of how 'oversold' it looks.
@@ -424,7 +501,7 @@ System Instructions:
 Format your message precisely as follows:
 1. Brief introduction.
 2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER, 3. HOLD TICKER). Do NOT list AVOID or IGNORE in this list. If there are no actions to take, state "No immediate actions recommended".
-3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend avoiding or ignoring. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Do NOT list the technical indicators as bullet points; integrate them naturally into your reasoning."""
+3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend avoiding or ignoring. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). You must ALWAYS include the current price of each stock in your detailed breakdown. Do NOT list the technical indicators as bullet points; integrate them naturally into your reasoning."""
     else:
         return f"""You are an expert TSX trading advisor. Read the following live market dossier:
 {dossier}
@@ -440,7 +517,7 @@ System Instructions:
 Format your message precisely as follows:
 1. Brief introduction.
 2. A prioritized, ordered list of specific actions you recommend taking (e.g., 1. SELL TICKER, 2. BUY TICKER, 3. HOLD TICKER). Do NOT list AVOID or IGNORE in this list. If there are no actions to take, state "No immediate actions recommended".
-3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend avoiding or ignoring. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). Integrate Ex-Dividend Dates and SMAs naturally into your reasoning without using bullet points."""
+3. Detailed stock-specific analysis ONLY for the stocks involved in your recommended actions. Do not provide detailed breakdowns for stocks you recommend avoiding or ignoring. CRITICAL: Keep your analysis extremely concise (maximum 3 sentences per stock). You must ALWAYS include the current price of each stock in your detailed breakdown. Integrate Ex-Dividend Dates and SMAs naturally into your reasoning without using bullet points."""
 
 def get_eod_summary_prompt(dossier=None):
     """Special prompt template used for the 4:05 PM End-of-Day summary."""

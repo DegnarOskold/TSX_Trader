@@ -3,11 +3,15 @@
     "portfolio": {
         "CNQ.TO": [
             "CNQ.TO",
-            "CL=F"
+            "CL=F",
+            "canadian+oil+sector",
+            "OPEC+oil+production"
         ],
         "ABX.TO": [
             "ABX.TO",
-            "GC=F"
+            "GC=F",
+            "gold+mining+sector",
+            "federal+reserve+interest+rate"
         ]
     },
     "stop_loss_pct": 5.0

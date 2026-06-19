@@ -8,7 +8,7 @@ This project is an autonomous stock trading advisor tracking the user's dynamic 
 * **Project Directory:** `c:\Users\Aamir\OneDrive\TSX-Trader`
 * **Python Environment:** Miniforge must be used to execute scripts to avoid path issues: `C:\Users\Aamir\miniforge3\python.exe`
 * **Local Ledger:** `trades.csv` tracks the user's trades, portfolio balances, and calculates Adjusted Cost Base (ACB).
-* **Environment Variables:** Credentials (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GEMINI_API_KEY`) are stored in `.env`.
+* **Environment Variables:** Credentials (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) are stored in `.env`.
 
 ## 2. Background Listener (User Action)
 The `telegram_daemon.py` script listens to the user's Telegram messages, uses the Gemini API to parse natural language trades, and updates `trades.csv`.
@@ -20,24 +20,28 @@ The `telegram_daemon.py` script listens to the user's Telegram messages, uses th
 ## 3. Agent Scheduling Instructions (AI Agent Action)
 The core analytical engine relies on the Antigravity Agent waking up, fetching the prompt from `market_analyzer.py`, formulating a trading recommendation, and sending it via `send_telegram.py`. 
 
-**You MUST use your native `schedule` tool to immediately recreate the following three background cron tasks:**
+**You MUST use your native `run_command` tool to start the File Watcher background listener:**
+```bash
+C:\Users\Aamir\miniforge3\python.exe file_watcher.py
+```
+This script acts as the bridge connecting the Telegram Daemon to your chat context!
+
+**You MUST also use your native `schedule` tool to immediately recreate the following three background cron tasks:**
 
 ### Task 1: Hourly Market Scan
 * **CronExpression:** `0 10-15 * * 1-5`
 * **Prompt:** 
-  > [Hourly Scan] Run `C:\Users\Aamir\miniforge3\python.exe run_scheduled_analysis.py --hourly` in `c:\Users\Aamir\OneDrive\TSX-Trader`. You do not need to format the telegram message yourself; the script will handle generating the analysis with Gemini and sending it to Telegram directly.
+  > [Hourly Scan] Execute an hourly market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
 
 ### Task 2: Pre-Close Market Scan
 * **CronExpression:** `30 15 * * 1-5`
 * **Prompt:** 
-  > [3:30 PM Scan] Run `C:\Users\Aamir\miniforge3\python.exe run_scheduled_analysis.py --hourly` in `c:\Users\Aamir\OneDrive\TSX-Trader`. You do not need to format the telegram message yourself; the script will handle generating the analysis with Gemini and sending it to Telegram directly.
+  > [3:30 PM Scan] Execute a pre-close market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
 
 ### Task 3: End-of-Day Summary
 * **CronExpression:** `5 16 * * 1-5`
 * **Prompt:** 
-  > [EOD Summary] Run `C:\Users\Aamir\miniforge3\python.exe run_scheduled_analysis.py --eod` in `c:\Users\Aamir\OneDrive\TSX-Trader`. You do not need to format the telegram message yourself; the script will handle generating the analysis with Gemini and sending it to Telegram directly.
+  > [EOD Summary] Execute the End-of-Day summary! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your EOD summary based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script.
 
 ## 4. Operational Notes
-* **Dedicated Script:** The scheduled tasks use `run_scheduled_analysis.py` which directly interacts with the Gemini API to avoid shell truncation issues that previously caused the agent to hallucinate repetitive prices.
-* **Ledger Updates:** Do not manually edit `trades.csv` unless explicitly asked. The daemon handles it automatically.
-* **Prompt Generation:** The `market_analyzer.py` handles all the instructions regarding what technical indicators to include and how to format the text. Simply pass its output to the Gemini model.
+* **Native Antigravity Engine:** The scheduled tasks rely exclusively on Antigravity reading the dossier and generating the response natively to avoid external API limits.

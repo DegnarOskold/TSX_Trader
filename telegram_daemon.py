@@ -6,24 +6,15 @@ import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from google import genai
-from google.genai import types
-from market_analyzer import generate_dossier, get_analysis_prompt, get_tickers, get_acb_and_balances, log_advice
+from market_analyzer import get_tickers, get_acb_and_balances
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TRADES_FILE = "trades.csv"
 
-# Initialize Gemini Client
-if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-else:
-    client = None
+# Global state for pending trades (if handled by external agent, but we can leave this here just in case, or remove it. Better to remove pending trades since Antigravity handles the conversation flow)
 
-# Global state for pending trades
-pending_trades = {}
 
 async def send_chunked_reply(update, text):
     """Telegram limits messages to 4096 characters. Chunk safely."""
@@ -45,6 +36,9 @@ def update_ledger(action, ticker, quantity, price):
         cash_bal = round(cash_bal - cost, 2)
         current_shares += quantity
     elif action == "SELL":
+        if quantity == 999999.9:
+            quantity = current_shares
+            cost = round(quantity * price, 2)
         if current_shares < quantity:
             raise ValueError(f"Insufficient shares of {ticker}. Own: {current_shares}, Trying to sell: {quantity}")
         current_shares -= quantity
@@ -82,172 +76,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Unauthorized access attempt from {chat_id}")
         return
         
-    if not client:
-        await update.message.reply_text("Gemini API key not configured. Cannot parse message.")
-        return
-        
-    user_text_lower = user_text.strip().lower()
+    msg_id = update.message.message_id
+    data = {
+        "chat_id": chat_id,
+        "msg_id": msg_id,
+        "text": user_text,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
     
-    # Handle pending trade confirmation
-    if chat_id in pending_trades and user_text_lower in ["yes", "no"]:
-        if user_text_lower == "no":
-            del pending_trades[chat_id]
-            await update.message.reply_text("❌ Trade cancelled.")
-            return
-        
-        # User confirmed YES
-        trade = pending_trades.pop(chat_id)
-        try:
-            result = update_ledger(trade['action'], trade['ticker'], trade['quantity'], trade['price'])
-            msg = f"✅ Confirmed and Recorded: {trade['action']} {trade['quantity']} {trade['ticker']} @ ${trade['price']:.2f}\n"
-            msg += f"{trade['ticker']}: {result['shares']:.4f} shares | Cash: ${result['cash']:.2f}"
-            await update.message.reply_text(msg)
-        except ValueError as ve:
-            await update.message.reply_text(f"❌ Error updating ledger: {str(ve)}")
-        return
-    
-    if user_text_lower == "change mode":
-        await update.message.reply_text("⚙️ Please reply with either 'Short Term Mode' or 'Medium Term Mode'.")
-        return
-        
-    if user_text_lower in ["short term mode", "medium term mode"]:
-        new_mode = "SHORT" if user_text_lower == "short term mode" else "MEDIUM"
-        # Read existing config to preserve other keys (e.g., tickers)
-        config = {}
-        if os.path.exists("config.json"):
-            with open("config.json", "r") as f:
-                config = json.load(f)
-        config["mode"] = new_mode
-        with open("config.json", "w") as f:
-            json.dump(config, f, indent=4)
-        await update.message.reply_text(f"✅ Operating mode successfully updated to: {new_mode} TERM.")
-        return
-        
-    if user_text_lower in ["analyze", "analysis"]:
-        await update.message.reply_text("🤖 Generating on-demand analysis. Please wait a moment...")
-        
-        try:
-            prompt = get_analysis_prompt()
-        except Exception as e:
-            await update.message.reply_text(f"❌ Could not generate live dossier: {e}")
-            return
-        
-        # Check market hours (M-F, 9:30 AM - 4:00 PM ET)
-        now = datetime.datetime.now()
-        is_weekend = now.weekday() >= 5
-        market_open = 9 * 60 + 30
-        market_close = 16 * 60
-        current_mins = now.hour * 60 + now.minute
-        is_market_hours = not is_weekend and (market_open <= current_mins <= market_close)
-        
-        warning_prefix = ""
-        if not is_market_hours:
-            warning_prefix = "⚠️ *Note: The market is currently closed. This analysis is based on the last session's closing data.*\n\n"
-        
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
-            await send_chunked_reply(update, warning_prefix + response.text)
-            
-            # Log on-demand analysis
-            log_advice(response.text)
-                
-        except Exception as e:
-            await update.message.reply_text(f"❌ Failed to generate analysis: {e}")
-            
-        return
+    with open("incoming_queue.jsonl", "a") as f:
+        f.write(json.dumps(data) + "\n")
 
+async def poll_outgoing_queue(context: ContextTypes.DEFAULT_TYPE):
+    if not os.path.exists("outgoing_queue.jsonl"):
+        return
         
-    tickers = get_tickers()
-    tickers_str = ", ".join(tickers)
+    lines = []
+    with open("outgoing_queue.jsonl", "r") as f:
+        lines = f.readlines()
+        
+    if not lines:
+        return
+        
+    # Clear the file since we read the contents
+    open("outgoing_queue.jsonl", "w").close()
     
-    # Step 1: Lightweight Intent Extraction (Saves API Tokens)
-    prompt_intent = f"""
-    You are a trading extraction tool. 
-    The user has sent the following message: "{user_text}"
-    
-    Determine if the user is logging a TRADE execution or asking a QUESTION.
-    Return ONLY a JSON object with the following keys, and nothing else:
-    - intent: "TRADE" or "QUESTION"
-    
-    If intent is "TRADE", include:
-    - action: "BUY" or "SELL"
-    - ticker: The ticker symbol with .TO suffix (valid tickers: {tickers_str}). If the user says just the name without .TO, append .TO.
-    - quantity: float
-    - price: float
-    
-    Examples: 
-    {{"intent": "TRADE", "action": "SELL", "ticker": "CNQ.TO", "quantity": 20.0, "price": 45.50}}
-    {{"intent": "QUESTION"}}
-    """
-    
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt_intent,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
-        data = json.loads(response.text)
-        
-        intent = data.get('intent', 'TRADE')
-        
-        if intent == "QUESTION":
-            await update.message.reply_text("🤖 Reading live market data to answer your question...")
+    for line in lines:
+        if not line.strip(): continue
+        try:
+            data = json.loads(line)
+            chat_id = data['chat_id']
+            text = data['text']
             
-            # Step 2: Heavyweight Dossier Generation (Only when needed)
-            try:
-                current_dossier = generate_dossier()
-            except Exception as e:
-                current_dossier = f"Could not generate live dossier: {e}"
-                
-            prompt_qa = f"""
-            You are a financial AI assistant. 
-            You have access to the following live market dossier:
-            {current_dossier}
-            
-            The user has asked the following question: "{user_text}"
-            
-            Please provide a detailed response to the user's question, utilizing the data from the dossier. Keep it concise.
-            """
-            try:
-                qa_response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt_qa
-                )
-                await send_chunked_reply(update, f"🤖 {qa_response.text}")
-            except Exception as e:
-                await update.message.reply_text(f"❌ Failed to generate answer: {str(e)}")
-            return
-            
-        # Check if the LLM successfully extracted the fields for TRADE
-        action = data.get('action')
-        ticker = data.get('ticker')
-        quantity_raw = data.get('quantity')
-        price_raw = data.get('price')
-        
-        if not action or not ticker or quantity_raw is None or price_raw is None:
-            await update.message.reply_text("🤔 I couldn't quite understand that. If it was a trade, make sure to include the action, ticker, quantity, and price. If it was a question, please rephrase it clearly.")
-            return
-            
-        quantity = float(quantity_raw)
-        price = float(price_raw)
-        
-        # Store in pending_trades instead of executing immediately
-        pending_trades[chat_id] = {
-            "action": action,
-            "ticker": ticker,
-            "quantity": quantity,
-            "price": price
-        }
-        
-        await update.message.reply_text(f"Did you mean to **{action}** {quantity} shares of **{ticker}** @ **${price:.2f}**?\n\nReply YES to confirm or NO to cancel.")
-            
-    except Exception as e:
-        await update.message.reply_text(f"❌ Failed to parse or process message: {str(e)}")
+            # Telegram limits messages to 4096 characters. Chunk safely.
+            text = text.replace('$', 'CAD ')
+            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for chunk in chunks:
+                await context.bot.send_message(chat_id=chat_id, text=chunk)
+        except Exception as e:
+            print("Error sending queued message:", e)
+
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
@@ -259,6 +127,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Start polling job for outgoing messages
+    app.job_queue.run_repeating(poll_outgoing_queue, interval=2.0)
     
     print("Daemon listening for Telegram messages...")
     app.run_polling()

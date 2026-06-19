@@ -141,8 +141,9 @@ def create_pdf():
     pdf.body(
         'The TSX Trading Advisor is a locally-running, fully automated stock analysis and portfolio management system. '
         'It is built entirely on free, open-source Python libraries and requires no paid brokerage API. It connects '
-        'to Yahoo Finance for real-time market data and uses the Google Gemini Large Language Model (LLM) to synthesize '
-        'quantitative and qualitative signals into plain-language trading recommendations delivered via Telegram.'
+        'to Yahoo Finance for real-time market data, fetches qualitative news from Yahoo Finance RSS and Google News RSS, '
+        'and uses the Antigravity AI agent (running natively in the Antigravity session, no external API key required) '
+        'to synthesize quantitative and qualitative signals into plain-language trading recommendations delivered via Telegram.'
     )
 
     pdf.section_title('1.1 Core Execution Paths')
@@ -151,41 +152,43 @@ def create_pdf():
     )
     pdf.bullet('PATH A - Telegram Daemon (telegram_daemon.py): A long-running foreground process started manually '
                'via start_daemon.bat. It listens for Telegram messages, handles natural-language trade logging, '
-               'mode switching, on-demand analysis (/analyze), and general Q&A.')
-    pdf.bullet('PATH B - Scheduled Cron Agent (Antigravity Agent): An external AI agent (this same session) '
-               'wakes up on a cron schedule (hourly, 3:30 PM, 4:05 PM ET on weekdays). It calls market_analyzer.py '
-               'to build a live dossier, feeds it to Gemini, and sends the resulting recommendation via send_telegram.py.')
+               'mode switching, on-demand analysis requests, and general Q&A. Messages are written to '
+               'incoming_queue.jsonl and read by the Antigravity agent via file_watcher.py.')
+    pdf.bullet('PATH B - Antigravity Agent (Native Cron): The Antigravity AI agent runs three native cron tasks '
+               '(hourly, 3:30 PM, 4:05 PM ET on weekdays). It generates a dossier directly by calling market_analyzer.py '
+               'and sends the resulting recommendation to Telegram by writing to outgoing_queue.jsonl. '
+               'No external LLM API key is needed; all AI reasoning is performed natively by the Antigravity agent.')
     pdf.ln(2)
 
     pdf.section_title('1.2 Data Flow Diagram')
     pdf.code_block(
-        'config.json ----------------------------------------------------------+\n'
-        'trades.csv  ----------------------------------------------------------+\n'
-        '                                                                      |\n'
-        '                                                             market_analyzer.py\n'
-        '                                       +-----------------------------+\n'
-        '                                       |  log_advice()               -> advice_history.txt (w/lock)\n'
-        '                                       |  get_acb_and_balances()     -> ACB, cash, P&L, stop-loss flag\n'
-        '                                       |  get_stock_data()           -> OHLC, price, indicators\n'
-        '                                       |  get_compartmentalized_news()-> RSS headlines\n'
-        '                                       |  get_cleaned_advice_history()-> rolling advice log (pruned)\n'
-        '                                       |  generate_dossier()         -> assembled text blob\n'
-        '                                       |  get_analysis_prompt()      -> prompt for LLM\n'
-        '                                       |  get_eod_summary_prompt()   -> EOD prompt for LLM\n'
-        '                                       +-------------+----------------+\n'
-        '                                                     |\n'
-        '                                    +----------------+------------------+\n'
-        '                                    |                                   |\n'
-        '                           telegram_daemon.py              run_scheduled_analysis.py\n'
-        '                           (interactive/trades)            (scheduled cron tasks)\n'
-        '                                    |                                   |\n'
-        '                               Gemini API                         Gemini API\n'
-        '                                    |                                   |\n'
-        '                            Telegram reply                   send_telegram.py\n'
-        '                                    |                                   |\n'
-        '                                    +-----------+-----------------------+\n'
-        '                                                |\n'
-        '                                      log_advice() -> advice_history.txt (w/lock)'
+        'config.json --------------------------------------------------+\n'
+        'trades.csv  --------------------------------------------------+\n'
+        '                                                              |\n'
+        '                                                     market_analyzer.py\n'
+        '                                   +-------------------------+\n'
+        '                                   |  log_advice()            -> advice_history.txt (w/lock)\n'
+        '                                   |  get_acb_and_balances()  -> ACB, cash, P&L, stop-loss flag\n'
+        '                                   |  get_stock_data()        -> OHLC, price, indicators\n'
+        '                                   |  get_compartmentalized_news() -> Yahoo RSS + Google News\n'
+        '                                   |  get_cleaned_advice_history() -> rolling advice log (pruned)\n'
+        '                                   |  generate_dossier()      -> assembled text blob\n'
+        '                                   +--------+----------------+\n'
+        '                                            |\n'
+        '                         +------------------+-------------------+\n'
+        '                         |                                      |\n'
+        '               telegram_daemon.py                   Antigravity Agent\n'
+        '               (interactive/trades)            (cron: hourly/3:30PM/4:05PM)\n'
+        '                         |                                      |\n'
+        '               incoming_queue.jsonl                    Native AI Reasoning\n'
+        '                         |                                      |\n'
+        '               file_watcher.py --> Antigravity            outgoing_queue.jsonl\n'
+        '                         |              |                       |\n'
+        '                         |        Native AI Reasoning    telegram_daemon.py\n'
+        '                         |              |                       |\n'
+        '                         +--------------+-----------------------+\n'
+        '                                        |\n'
+        '                           Telegram reply to user + log_advice()'
     )
 
     pdf.section_title('1.3 Technology Stack')
@@ -193,11 +196,13 @@ def create_pdf():
     pdf.table_row('Market Data', 'yfinance (Yahoo Finance)', '1.4.1')
     pdf.table_row('Technical Indicators', 'pandas-ta', '0.4.71b0')
     pdf.table_row('Data Frames', 'pandas', '3.0.1')
-    pdf.table_row('AI Reasoning', 'Google Gemini 2.5 Flash (via google-genai)', '2.8.0')
+    pdf.table_row('AI Reasoning', 'Antigravity Agent (native, no API key required)', 'session-native')
+    pdf.table_row('News (Qualitative)', 'Yahoo Finance RSS + Google News RSS', 'live')
     pdf.table_row('Telegram Messaging', 'python-telegram-bot', '22.8')
     pdf.table_row('Secrets Management', 'python-dotenv', '1.2.2')
     pdf.table_row('HTTP Requests', 'requests', 'latest')
     pdf.table_row('PDF Generation', 'fpdf2', '2.8.7')
+    pdf.table_row('Message Bridge', 'file_watcher.py (incoming_queue.jsonl)', 'custom')
     pdf.table_row('Runtime', 'Python (Miniforge)', '3.x')
     pdf.ln(3)
 
@@ -208,20 +213,21 @@ def create_pdf():
     pdf.chapter_title('2. File Structure & Roles')
 
     pdf.table_row('File', 'Role', header=True)
-    pdf.table_row('market_analyzer.py', 'Core data engine. Computes indicators, fetches news, builds dossier, and generates all LLM prompts. Also owns log_advice().')
-    pdf.table_row('telegram_daemon.py', 'Long-running bot server. Handles all user interaction: trade logging, analysis, Q&A, mode switching, /help command.')
-    pdf.table_row('run_scheduled_analysis.py', 'Standalone script invoked by cron tasks. Calls market_analyzer.py, sends result to Gemini, and delivers via send_telegram.py.')
-    pdf.table_row('send_telegram.py', 'Standalone CLI utility. Sends a text string via Telegram Bot API. Used by run_scheduled_analysis.py.')
+    pdf.table_row('market_analyzer.py', 'Core data engine. Computes indicators, fetches news from Yahoo RSS + Google News, builds the dossier, and generates all LLM prompts. Also owns log_advice().')
+    pdf.table_row('telegram_daemon.py', 'Long-running bot server. Listens for Telegram messages; writes them to incoming_queue.jsonl and sends outgoing messages from outgoing_queue.jsonl.')
+    pdf.table_row('file_watcher.py', 'Lightweight bridge. Polls incoming_queue.jsonl and prints new messages to stdout to wake up the Antigravity agent.')
+    pdf.table_row('send_telegram.py', 'Standalone CLI utility. Sends a text string via Telegram Bot API and logs advice to advice_history.txt.')
     pdf.table_row('generate_pdf.py', 'Generates this PDF documentation from source.')
-    pdf.table_row('config.json', 'Runtime configuration. Controls active mode (SHORT/MEDIUM), portfolio-to-news-topic mapping, and stop_loss_pct.')
+    pdf.table_row('config.json', 'Runtime configuration. Controls active mode (SHORT/MEDIUM), portfolio-to-news-topic mapping (including sector/macro search terms), and stop_loss_pct.')
     pdf.table_row('trades.csv', 'Source of truth for all holdings. Records every trade; used to calculate ACB and cash balance.')
     pdf.table_row('advice_history.txt', 'Rolling log of AI-generated advice. Injected into every new dossier for context continuity.')
-    pdf.table_row('.env', 'Secrets file. Contains TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, and GEMINI_API_KEY.')
+    pdf.table_row('incoming_queue.jsonl', 'JSONL file written by telegram_daemon.py. Each line is a user message from Telegram.')
+    pdf.table_row('outgoing_queue.jsonl', 'JSONL file written by Antigravity agent. Messages here are sent to Telegram by telegram_daemon.py.')
+    pdf.table_row('.env', 'Secrets file. Contains TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID only.')
     pdf.table_row('.gitignore', 'Excludes .env, trades.csv, advice_history.txt, and *.lock files from version control.')
     pdf.table_row('start_daemon.bat', 'Windows batch file to launch telegram_daemon.py from the correct working directory.')
     pdf.table_row('requirements.txt', 'Pinned Python dependency list for reproducible installs.')
-    pdf.table_row('AGENT_RESTORE_INSTRUCTIONS.md', 'Instructions for an AI agent to restore the system if the session is lost.')
-    pdf.table_row('test_llm.py', 'Manual test script for validating the Gemini trade-extraction prompt against live dynamic tickers.')
+    pdf.table_row('AGENT_RESTORE_INSTRUCTIONS.md', 'Instructions for an AI agent to restore the system if the Antigravity session is lost.')
     pdf.ln(3)
 
     # ============================================================
@@ -239,17 +245,18 @@ def create_pdf():
         '{\n'
         '    "mode": "SHORT",           // "SHORT" or "MEDIUM"\n'
         '    "portfolio": {\n'
-        '        "CNQ.TO": ["CNQ.TO", "CL=F"],   // Ticker -> list of RSS news topics\n'
-        '        "ABX.TO": ["ABX.TO", "GC=F"]    // Ticker -> list of RSS news topics\n'
+        '        "CNQ.TO": ["CNQ.TO", "CL=F", "canadian+oil+sector", "OPEC+oil+production"],\n'
+        '        "ABX.TO": ["ABX.TO", "GC=F", "gold+mining+sector", "federal+reserve+interest+rate"]\n'
         '    },\n'
         '    "stop_loss_pct": 5.0       // % drop below ACB that triggers a mandatory SELL directive\n'
         '}'
     )
     pdf.bullet('"mode": Controls which technical indicators are computed and which AI system instructions are used.')
-    pdf.bullet('"portfolio": Keys are TSX ticker symbols. Values are lists of Yahoo Finance RSS symbols '
-               'whose headlines will be fetched as qualitative context for each holding. Ticker symbols '
-               'listed as values that are NOT in the portfolio keys are treated as Macro Commodity trackers '
-               '(e.g. CL=F, GC=F) and have their live price/daily change injected into the dossier.')
+    pdf.bullet('"portfolio": Keys are TSX ticker symbols. Values are lists of news search topics. '
+               'Valid Yahoo Finance ticker symbols (e.g. CL=F, GC=F) are also fetched via Yahoo RSS and their '
+               'live price/daily change is injected into the Macro Commodities dossier section. '
+               'Plain text search terms (e.g. "canadian+oil+sector") are fetched from Google News RSS only '
+               'and contribute qualitative headlines without generating price data.')
     pdf.bullet('"stop_loss_pct": The maximum acceptable loss percentage before the system injects a hard '
                'STOP-LOSS TRIGGERED directive into the dossier. Default is 5.0%.')
     pdf.bullet('To add a new stock, add a new key-value pair to "portfolio". The system will automatically '
@@ -259,17 +266,16 @@ def create_pdf():
     pdf.section_title('3.2  .env  (Secrets)')
     pdf.body(
         'All credentials are stored in a .env file in the project root. This file is excluded from version control '
-        'by .gitignore. Never commit this file.'
+        'by .gitignore. Never commit this file. Note: No Gemini or LLM API key is required -- all AI reasoning '
+        'is performed natively by the Antigravity agent session.'
     )
     pdf.code_block(
         'TELEGRAM_BOT_TOKEN=xxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n'
-        'TELEGRAM_CHAT_ID=xxxxxxxxx    # Used by BOTH send_telegram.py AND telegram_daemon.py\n'
-        'GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+        'TELEGRAM_CHAT_ID=xxxxxxxxx    # Used by BOTH send_telegram.py AND telegram_daemon.py'
     )
     pdf.bullet('TELEGRAM_BOT_TOKEN: BotFather API token. Required by both the daemon and send_telegram.py.')
     pdf.bullet('TELEGRAM_CHAT_ID: Your numeric Telegram chat ID. Used by send_telegram.py to push outbound messages, '
                'and by telegram_daemon.py to authorize inbound messages. A single key serves both purposes.')
-    pdf.bullet('GEMINI_API_KEY: Google AI Studio API key for the Gemini 2.5 Flash model.')
     pdf.ln(3)
 
     pdf.section_title('3.3  Changing Operating Mode')
@@ -337,9 +343,13 @@ def create_pdf():
     pdf.set_font('helvetica', 'B', 10)
     pdf.cell(0, 6, 'get_compartmentalized_news(config=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.body(
-        'Reads portfolio from config (or config.json directly), builds a unique list of RSS topic symbols, then fetches '
-        'the 10 most recent Yahoo Finance RSS headlines for each topic (timeout=10s). '
-        'This is the Qualitative Analysis section of the dossier.'
+        'Reads portfolio from config (or config.json directly), builds a unique list of news topics, then for each topic '
+        'fetches headlines from BOTH Yahoo Finance RSS and Google News RSS (timeout=10s each). '
+        'Headlines older than 48 hours are filtered out. Duplicates across sources are eliminated via a seen_titles set. '
+        'Each item is tagged with a freshness label (NEW/RECENT/OLD) based on age, and auto-categorized as '
+        '[MACRO], [EARNINGS], [ANALYST], or [NEWS] via keyword matching. The <description> field is extracted '
+        'and truncated to 200 characters to provide the AI with article summaries. '
+        'Results are sorted by recency and capped at 10 items per topic.'
     )
 
     pdf.set_font('helvetica', 'B', 10)
@@ -356,17 +366,18 @@ def create_pdf():
     pdf.cell(0, 6, 'generate_dossier()', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.body(
         'The main assembler. Loads config.json once, then calls all sub-functions passing the config object. '
-        'New sections added in v2: Unrealised P&L per holding, deterministic STOP-LOSS TRIGGERED directives, '
-        'Today Open/High/Low per ticker, and a Macro Commodities section with live price and daily change '
-        'for non-portfolio symbols (e.g. CL=F, GC=F) found in the portfolio news mapping.'
+        'Sections: Unrealised P&L per holding, deterministic STOP-LOSS TRIGGERED directives, '
+        'Today Open/High/Low per ticker, a Macro Commodities section with live price and daily change '
+        'for recognized ticker symbols (e.g. CL=F, GC=F), and the new intelligent qualitative news section '
+        'with freshness scores, categories, and summaries from both Yahoo and Google News sources.'
     )
 
     pdf.set_font('helvetica', 'B', 10)
     pdf.cell(0, 6, 'get_analysis_prompt(dossier=None, mode=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.body(
         'Wraps the dossier in the appropriate system instructions and output format rules for either SHORT '
-        'or MEDIUM mode. Used by both the Telegram daemon (for /analyze and Q&A) and run_scheduled_analysis.py '
-        '(for scheduled hourly and 3:30 PM recommendations).'
+        'or MEDIUM mode. Used by the Antigravity agent for all analysis tasks: scheduled cron tasks, '
+        'on-demand requests from Telegram, and general Q&A.'
     )
 
     pdf.set_font('helvetica', 'B', 10)
@@ -440,9 +451,12 @@ def create_pdf():
     pdf.bullet('Section 2: Date and timestamp')
     pdf.bullet('Section 3: Portfolio & Pricing -- shares owned, ACB, current price, Today Open/High/Low, '
                'Unrealised P&L, any STOP-LOSS TRIGGERED directives, and all technical indicators per ticker')
-    pdf.bullet('Section 4: Macro Commodities -- live price and daily % change (vs Open) for commodity symbols '
-               'configured as news topics (e.g. CL=F for oil, GC=F for gold)')
-    pdf.bullet('Section 5: Qualitative Data -- 10 recent Yahoo Finance RSS headlines per configured news topic')
+    pdf.bullet('Section 4: Macro Commodities -- live price and daily % change (vs Open) for recognized ticker '
+               'symbols configured as news topics (e.g. CL=F for oil, GC=F for gold)')
+    pdf.bullet('Section 5: Qualitative Data -- up to 10 recent headlines per configured news topic, sourced '
+               'from both Yahoo Finance RSS and Google News RSS. Each headline is tagged with a freshness '
+               'label (NEW/RECENT/OLD), age in hours, article category [MACRO/EARNINGS/ANALYST/NEWS], and '
+               'a truncated article summary. Headlines older than 48 hours are excluded.')
     pdf.bullet('Section 6: Previous Advice History -- last 5 entries from today + final entry from each of '
                'the last 5 business days (weekend entries discarded)')
     pdf.ln(2)
@@ -586,17 +600,17 @@ def create_pdf():
 
     pdf.body(
         'The three scheduled tasks are managed by the Antigravity AI agent using its native schedule tool. '
-        'Each task fires a cron-based wake-up that runs run_scheduled_analysis.py as a subprocess. '
-        'That script directly calls market_analyzer.py, sends the dossier to the Gemini API, '
-        'and delivers the response via send_telegram.py. This architecture was adopted to eliminate '
-        'shell buffer truncation that previously caused the agent to hallucinate stale prices.'
+        'When a task fires, the Antigravity agent directly executes a Python script to call market_analyzer.generate_dossier(), '
+        'then performs all reasoning natively (no external LLM API required), and delivers the recommendation '
+        'by writing to outgoing_queue.jsonl, which the Telegram daemon reads and sends to the user. '
+        'The advice is also logged to advice_history.txt via log_advice() for context continuity.'
     )
 
     pdf.section_title('8.1  Task 1: Hourly Market Scan')
     pdf.table_row('Parameter', 'Value', header=True)
     pdf.table_row('Cron Expression', '0 10-15 * * 1-5')
     pdf.table_row('Schedule', 'Every hour on the hour, 10 AM to 3 PM ET, Monday to Friday')
-    pdf.table_row('Prompt Source', 'get_analysis_prompt() from market_analyzer.py')
+    pdf.table_row('Reasoning', 'Antigravity agent native AI (no API key)')
     pdf.table_row('Output', 'SHORT or MEDIUM mode trading recommendation sent via Telegram')
     pdf.ln(3)
 
@@ -604,7 +618,7 @@ def create_pdf():
     pdf.table_row('Parameter', 'Value', header=True)
     pdf.table_row('Cron Expression', '30 15 * * 1-5')
     pdf.table_row('Schedule', 'Every weekday at 3:30 PM ET')
-    pdf.table_row('Prompt Source', 'get_analysis_prompt() from market_analyzer.py')
+    pdf.table_row('Reasoning', 'Antigravity agent native AI (no API key)')
     pdf.table_row('Output', 'Final intraday recommendation before market close. The last advice logged to advice_history.txt for the day.')
     pdf.ln(3)
 
@@ -612,7 +626,7 @@ def create_pdf():
     pdf.table_row('Parameter', 'Value', header=True)
     pdf.table_row('Cron Expression', '5 16 * * 1-5')
     pdf.table_row('Schedule', 'Every weekday at 4:05 PM ET (5 minutes after market close)')
-    pdf.table_row('Prompt Source', 'get_eod_summary_prompt() from market_analyzer.py')
+    pdf.table_row('Reasoning', 'Antigravity agent native AI (EOD summary mode, no API key)')
     pdf.table_row('Output', 'Holistic EOD summary: portfolio performance for the day and next-day outlook.')
     pdf.ln(3)
 
@@ -730,7 +744,6 @@ def create_pdf():
     pdf.table_row('pandas', '3.0.1', 'DataFrame manipulation for price history and indicator computation.')
     pdf.table_row('pandas-ta', '0.4.71b0', 'Technical Analysis library. Computes EMA, RSI, ATR, SMA, and Bollinger Bands on DataFrames.')
     pdf.table_row('python-telegram-bot', '22.8', 'Async Telegram Bot API wrapper. Powers the daemon\'s polling loop and message handling.')
-    pdf.table_row('google-genai', '2.8.0', 'Google Gemini API client. Used to call gemini-2.5-flash for all LLM reasoning.')
     pdf.table_row('python-dotenv', '1.2.2', 'Reads the .env file and injects variables into os.environ.')
     pdf.table_row('requests', 'latest', 'HTTP client. Used by send_telegram.py to call the Telegram sendMessage API endpoint.')
     pdf.table_row('fpdf2', '2.8.7', 'PDF generation library. Used exclusively by generate_pdf.py to produce this document.')
