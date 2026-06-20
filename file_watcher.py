@@ -4,25 +4,36 @@ import sys
 
 QUEUE_FILE = "incoming_queue.jsonl"
 
+PROCESSING_FILE = "incoming_processing.jsonl"
+
 def main():
     if not os.path.exists(QUEUE_FILE):
         open(QUEUE_FILE, 'w').close()
         
-    last_size = os.path.getsize(QUEUE_FILE)
-    
     while True:
         try:
-            current_size = os.path.getsize(QUEUE_FILE)
-            if current_size < last_size:
-                last_size = 0
-            
-            if current_size > last_size:
-                with open(QUEUE_FILE, 'r') as f:
-                    f.seek(last_size)
-                    line = f.readline()
-                    if line:
-                        print(f"NEW_MESSAGE:{line.strip()}", flush=True)
-                        sys.exit(0)  # Exit immediately to wake up Antigravity!
+            if os.path.exists(QUEUE_FILE) and os.path.getsize(QUEUE_FILE) > 0:
+                os.rename(QUEUE_FILE, PROCESSING_FILE)
+                
+                lines = []
+                with open(PROCESSING_FILE, 'r') as f:
+                    lines = f.readlines()
+                    
+                if lines:
+                    first_msg = lines.pop(0)
+                    
+                    if lines:
+                        with open(QUEUE_FILE, 'a') as f:
+                            for line in lines:
+                                f.write(line)
+                                
+                    os.remove(PROCESSING_FILE)
+                    
+                    if first_msg.strip():
+                        print(f"NEW_MESSAGE:{first_msg.strip()}", flush=True)
+                        sys.exit(0)
+                else:
+                    os.remove(PROCESSING_FILE)
         except Exception:
             pass
             

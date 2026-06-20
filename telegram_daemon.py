@@ -1,12 +1,10 @@
 import os
-import csv
 import json
 import asyncio
 import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from market_analyzer import get_tickers, get_acb_and_balances
 
 load_dotenv()
 
@@ -22,37 +20,6 @@ async def send_chunked_reply(update, text):
     for chunk in chunks:
         await update.message.reply_text(chunk)
 
-def update_ledger(action, ticker, quantity, price):
-    balances = get_acb_and_balances()
-    positions = balances["positions"]
-    cash_bal = balances["cash"]
-    
-    cost = round(quantity * price, 2)
-    current_shares = positions.get(ticker, {}).get("shares", 0.0)
-    
-    if action == "BUY":
-        if cash_bal < cost:
-            raise ValueError(f"Insufficient cash! Cost: ${cost:.2f}, Cash: ${cash_bal:.2f}")
-        cash_bal = round(cash_bal - cost, 2)
-        current_shares += quantity
-    elif action == "SELL":
-        if quantity == 999999.9:
-            quantity = current_shares
-            cost = round(quantity * price, 2)
-        if current_shares < quantity:
-            raise ValueError(f"Insufficient shares of {ticker}. Own: {current_shares}, Trying to sell: {quantity}")
-        current_shares -= quantity
-        cash_bal = round(cash_bal + cost, 2)
-    else:
-        raise ValueError("Invalid action. Must be BUY or SELL.")
-
-    date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    with open(TRADES_FILE, 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([date_str, ticker.upper(), action, quantity, price, round(current_shares, 4), cash_bal])
-        
-    return {"ticker": ticker, "shares": current_shares, "cash": cash_bal}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Trading Daemon online. Tell me about your trades naturally (e.g., 'I sold 20 CNQ at 45.50'). Send /help for more info.")
@@ -91,16 +58,16 @@ async def poll_outgoing_queue(context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists("outgoing_queue.jsonl"):
         return
         
-    lines = []
-    with open("outgoing_queue.jsonl", "r") as f:
-        lines = f.readlines()
-        
-    if not lines:
+    try:
+        os.rename("outgoing_queue.jsonl", "outgoing_processing.jsonl")
+    except Exception:
         return
         
-    # Clear the file since we read the contents
-    open("outgoing_queue.jsonl", "w").close()
-    
+    lines = []
+    with open("outgoing_processing.jsonl", "r") as f:
+        lines = f.readlines()
+        
+    failed_lines = []
     for line in lines:
         if not line.strip(): continue
         try:
@@ -115,6 +82,17 @@ async def poll_outgoing_queue(context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(chat_id=chat_id, text=chunk)
         except Exception as e:
             print("Error sending queued message:", e)
+            failed_lines.append(line)
+            
+    if failed_lines:
+        with open("outgoing_queue.jsonl", "a") as f:
+            for line in failed_lines:
+                f.write(line)
+                
+    try:
+        os.remove("outgoing_processing.jsonl")
+    except Exception:
+        pass
 
 
 def main():

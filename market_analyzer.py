@@ -12,26 +12,33 @@ import time
 import urllib.parse
 from email.utils import parsedate_to_datetime
 from datetime import timezone
+from contextlib import contextmanager
 
-def log_advice(text):
+@contextmanager
+def acquire_advice_lock():
     lock_file = "advice.lock"
     max_retries = 50
     for _ in range(max_retries):
         try:
-            # Open with exclusive creation
             fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(fd)
             break
         except FileExistsError:
             time.sleep(0.1)
-    
     try:
+        yield
+    finally:
+        if os.path.exists(lock_file):
+            try:
+                os.remove(lock_file)
+            except OSError:
+                pass
+
+def log_advice(text):
+    with acquire_advice_lock():
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open("advice_history.txt", "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}]\n{text}\n\n")
-    finally:
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
 
 def get_current_mode(config=None):
     if config is not None:
@@ -173,7 +180,12 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
                 "Ex_Div_Date": ex_div_date
             }
     except Exception as e:
-        return f"Error fetching {ticker_symbol}: {e}"
+        return {
+            "Open": "N/A", "High": "N/A", "Low": "N/A", "Price": "N/A",
+            "Volume": 0, "Vol_Ratio": "N/A", "EMA_5": "N/A", "EMA_9": "N/A",
+            "RSI_7": "N/A", "ATR_5": "N/A", "BB_Lower": "N/A", "BB_Mid": "N/A",
+            "BB_Upper": "N/A", "RSI_14": "N/A", "SMA_50": "N/A", "Ex_Div_Date": "N/A"
+        }
 
 def get_compartmentalized_news(config=None):
     topics = []
@@ -299,50 +311,51 @@ def get_compartmentalized_news(config=None):
     return news_output.strip()
 
 def get_cleaned_advice_history():
-    if not os.path.exists("advice_history.txt"):
-        return "No previous advice recorded today."
-        
-    with open("advice_history.txt", "r", encoding="utf-8") as f:
-        content = f.read()
-        
-    # Split by timestamp blocks: [YYYY-MM-DD HH:MM:SS]
-    pattern = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\n(.*?)(?=\n\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]|\Z)"
-    matches = re.findall(pattern, content, re.DOTALL)
-    
-    if not matches:
-        return "No previous advice recorded today."
-        
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    
-    # Group by date
-    grouped = {}
-    for timestamp, text in matches:
-        date_str = timestamp.split(" ")[0]
-        if date_str not in grouped:
-            grouped[date_str] = []
-        grouped[date_str].append((timestamp, text.strip()))
-        
-    # Determine which past dates to keep (last 5 business days max)
-    past_dates = sorted([d for d in grouped.keys() if d != today_str])
-    business_dates = []
-    for d in past_dates:
-        dt = datetime.datetime.strptime(d, "%Y-%m-%d")
-        if dt.weekday() < 5:
-            business_dates.append(d)
-    dates_to_keep = business_dates[-5:]
-    
-    # Rebuild history
-    cleaned_entries = []
-    for date_str in sorted(grouped.keys()):
-        if date_str == today_str:
-            cleaned_entries.extend(grouped[date_str])
-        elif date_str in dates_to_keep:
-            cleaned_entries.append(grouped[date_str][-1]) # Keep only the final one from previous days
+    with acquire_advice_lock():
+        if not os.path.exists("advice_history.txt"):
+            return "No previous advice recorded today."
             
-    # Write back the cleaned history
-    with open("advice_history.txt", "w", encoding="utf-8") as f:
-        for timestamp, text in cleaned_entries:
-            f.write(f"[{timestamp}]\n{text}\n\n")
+        with open("advice_history.txt", "r", encoding="utf-8") as f:
+            content = f.read()
+            
+        # Split by timestamp blocks: [YYYY-MM-DD HH:MM:SS]
+        pattern = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\n(.*?)(?=\n\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]|\Z)"
+        matches = re.findall(pattern, content, re.DOTALL)
+        
+        if not matches:
+            return "No previous advice recorded today."
+            
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        
+        # Group by date
+        grouped = {}
+        for timestamp, text in matches:
+            date_str = timestamp.split(" ")[0]
+            if date_str not in grouped:
+                grouped[date_str] = []
+            grouped[date_str].append((timestamp, text.strip()))
+            
+        # Determine which past dates to keep (last 5 business days max)
+        past_dates = sorted([d for d in grouped.keys() if d != today_str])
+        business_dates = []
+        for d in past_dates:
+            dt = datetime.datetime.strptime(d, "%Y-%m-%d")
+            if dt.weekday() < 5:
+                business_dates.append(d)
+        dates_to_keep = business_dates[-5:]
+        
+        # Rebuild history
+        cleaned_entries = []
+        for date_str in sorted(grouped.keys()):
+            if date_str == today_str:
+                cleaned_entries.extend(grouped[date_str])
+            elif date_str in dates_to_keep:
+                cleaned_entries.append(grouped[date_str][-1]) # Keep only the final one from previous days
+                
+        # Write back the cleaned history
+        with open("advice_history.txt", "w", encoding="utf-8") as f:
+            for timestamp, text in cleaned_entries:
+                f.write(f"[{timestamp}]\n{text}\n\n")
             
     # Build string to return using bounded history
     history_entries = []
@@ -488,7 +501,7 @@ Read the following live market dossier:
 
 System Instructions:
 1. Trend Validation (No Falling Knives): If a stock is trading near or below its Lower Bollinger Band BUT its 5-day EMA is below its 9-day EMA, it is in a strong downtrend. Do NOT assume an immediate snap-back rally. Wait for a bullish crossover or volume shock.
-2. Volume Shock: If Vol_Ratio is > 2.0 (Volume is 2x normal) during a drop, this is 'Capitulation' (panic selling is exhausted). This is a bullish reversal signal.
+2. Volume Shock: If Vol_Ratio is > 1.25 (Volume is 1.25x normal) during a drop, this is 'Capitulation' (panic selling is exhausted). This is a bullish reversal signal.
 3. Market Open Volatility: If the current time is before 9:30 AM ET, DO NOT recommend buying immediately at open. Retail panic and HFT bots cause massive, irrational gaps. Recommend waiting 30 minutes.
 4. Anticipatory Macro Shifts (Buy the Rumor, Sell the News): Do not wait for a deal to be finalized or signed before adjusting your thesis. If the qualitative RSS headlines or macro commodity trackers (CL=F, GC=F) strongly signal a high-probability calendar event, formal signing ceremony, or geopolitical shift within the next 24 to 48 hours, prioritize this upcoming macro momentum. If the impending event removes a market premium or changes commodity fundamentals, override short-term "oversold" technical indicators (like 7-day RSI and Bollinger Bands) and favor defensive capital preservation (HOLD or SELL) rather than assuming an immediate mean-reversion rally.
 5. Cash Constraint: You must check the Available Free Cash before recommending a BUY. If there is insufficient free cash to purchase a meaningful position, you must NOT recommend a BUY action.
@@ -497,6 +510,7 @@ System Instructions:
 8. Profit-Taking Mechanics: If an asset currently held touches its Upper Bollinger Band and RSI exceeds 70, you must explicitly recommend trimming the position to lock in realized gains.
 9. Zero-Share Holdings: If the user currently owns 0 shares of a stock and you do not recommend buying it, explicitly recommend AVOID or IGNORE instead of HOLD.
 10. Acknowledge Failed Theses: Review the PREVIOUS ADVICE HISTORY. If your previous predictions were wrong and the stock continued to drop, explicitly acknowledge this instead of blindly repeating the same thesis.
+11. Macro Override (Contrarian Entries): You may bypass the strict EMA downtrend rule and recommend a Speculative BUY ONLY IF: (a) 7-day RSI is deeply oversold (< 25), (b) There is a top-tier macroeconomic catalyst in the news that directly and positively impacts the sector, and (c) You explicitly label it as a "Speculative Macro Entry" with a small position size.
 
 Format your message precisely as follows:
 1. Brief introduction.

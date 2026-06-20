@@ -12,6 +12,30 @@
             "GC=F",
             "gold+mining+sector",
             "federal+reserve+interest+rate"
+        ],
+        "LLY.TO": [
+            "LLY.TO",
+            "LLY",
+            "GLP-1+weight+loss+drugs",
+            "FDA+drug+approvals"
+        ],
+        "NVDA.TO": [
+            "NVDA.TO",
+            "NVDA",
+            "artificial+intelligence+semiconductors",
+            "AI+chip+demand"
+        ],
+        "CSCO.TO": [
+            "CSCO.TO",
+            "CSCO",
+            "enterprise+networking+infrastructure",
+            "tech+sector+earnings"
+        ],
+        "PANW.TO": [
+            "PANW.TO",
+            "PANW",
+            "cybersecurity+sector",
+            "enterprise+cyber+attacks"
         ]
     },
     "stop_loss_pct": 5.0
