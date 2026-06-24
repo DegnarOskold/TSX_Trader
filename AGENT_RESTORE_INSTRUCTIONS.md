@@ -18,7 +18,7 @@ The `telegram_daemon.py` script listens to the user's Telegram messages, uses th
   ```
 
 ## 3. Agent Scheduling Instructions (AI Agent Action)
-The core analytical engine relies on the Antigravity Agent waking up, fetching the prompt from `market_analyzer.py`, formulating a trading recommendation, and sending it via `send_telegram.py`. 
+The core analytical engine relies on the Antigravity Agent waking up, fetching the prompt from `market_analyzer.py`, formulating a trading recommendation, and pushing it to `outgoing_queue.jsonl` to be sent by the daemon.
 
 **You MUST use your native `run_command` tool to start the File Watcher background listener:**
 ```bash
@@ -28,10 +28,10 @@ This script acts as the bridge connecting the Telegram Daemon to your chat conte
 
 **You MUST also use your native `schedule` tool to immediately recreate the following three background cron tasks:**
 
-### Task 1: Hourly Market Scan
-* **CronExpression:** `0 10-15 * * 1-5`
+### Task 1: 30-Minute Market Scan
+* **CronExpression:** `0,30 10-15 * * 1-5`
 * **Prompt:** 
-  > [Hourly Scan] Execute an hourly market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
+  > [30-min Scan] Execute a 30-minute interval market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
 
 ### Task 2: Pre-Close Market Scan
 * **CronExpression:** `30 15 * * 1-5`

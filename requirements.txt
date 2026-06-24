@@ -5,3 +5,4 @@ python-telegram-bot[job-queue]==22.8
 python-dotenv==1.2.2
 requests
 fpdf2==2.8.7
+psutil

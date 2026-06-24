@@ -1,907 +1,555 @@
-from fpdf import FPDF
+﻿from fpdf import FPDF
 from fpdf.enums import XPos, YPos
+import datetime
+
+VERSION = "1.0.1"
+GENERATED = datetime.datetime.now().strftime("%B %d, %Y")
 
 class PDF(FPDF):
     def header(self):
-        self.set_font('helvetica', 'B', 10)
-        self.set_fill_color(30, 30, 40)
-        self.set_text_color(200, 200, 200)
-        self.cell(0, 8, 'TSX Trading Advisor - Technical Reference Manual', fill=True, align='C',
-                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font("helvetica", "B", 10)
+        self.set_fill_color(20, 25, 40)
+        self.set_text_color(200, 210, 230)
+        self.cell(0, 8, f"TSX Trading Advisor  |  Technical Reference Manual  |  v{VERSION}",
+                  fill=True, align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
-        self.ln(10)
+        self.ln(8)
 
     def footer(self):
         self.set_y(-15)
-        self.set_font('helvetica', 'I', 9)
-        self.set_text_color(120, 120, 120)
-        self.cell(0, 10, f'Page {self.page_no()}  |  TSX Trading Advisor  |  Confidential', align='C')
+        self.set_font("helvetica", "I", 8)
+        self.set_text_color(140, 140, 160)
+        self.cell(0, 10, f"Page {self.page_no()}  |  TSX Trading Advisor v{VERSION}  |  Confidential", align="C")
         self.set_text_color(0, 0, 0)
 
-    def chapter_title(self, title):
-        self.set_font('helvetica', 'B', 14)
-        self.set_fill_color(30, 30, 40)
+    def chapter_title(self, num, title):
+        self.set_font("helvetica", "B", 13)
+        self.set_fill_color(20, 25, 40)
         self.set_text_color(255, 255, 255)
-        self.cell(0, 9, title, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.cell(0, 9, f"  {num}.  {title}", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
-        self.ln(3)
+        self.ln(4)
 
     def section_title(self, title):
-        self.set_font('helvetica', 'B', 11)
-        self.set_text_color(30, 80, 150)
+        self.set_font("helvetica", "B", 11)
+        self.set_text_color(20, 70, 160)
         self.cell(0, 7, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
         self.ln(1)
 
     def body(self, text):
-        self.set_font('helvetica', '', 10)
+        self.set_font("helvetica", "", 10)
         self.multi_cell(0, 5.5, text)
         self.ln(2)
 
+    def bullet(self, text):
+        self.set_font("helvetica", "", 10)
+        self.set_x(self.get_x() + 8)
+        self.multi_cell(0, 5.5, f"  -  {text}")
+        self.ln(0.5)
+
     def code_block(self, code):
-        self.set_font('courier', '', 9)
-        self.set_fill_color(240, 240, 245)
-        self.set_draw_color(180, 180, 200)
+        self.set_font("courier", "", 9)
+        self.set_fill_color(238, 240, 248)
+        self.set_draw_color(170, 175, 200)
         self.multi_cell(0, 5, code, fill=True, border=1)
         self.set_draw_color(0, 0, 0)
         self.set_fill_color(255, 255, 255)
         self.ln(3)
 
-    def table_row(self, col1, col2, col3='', header=False):
-        self.set_font('helvetica', 'B' if header else '', 9)
-        if header:
-            self.set_fill_color(60, 60, 80)
-            self.set_text_color(255, 255, 255)
-            fill = True
-        else:
-            self.set_fill_color(248, 248, 252)
-            self.set_text_color(0, 0, 0)
-            fill = True
-        w1 = 50
-        w2 = 70
-        w3 = 0 if not col3 else 70
-        if col3:
-            self.cell(w1, 6, col1, border=1, fill=fill)
-            self.cell(w2, 6, col2, border=1, fill=fill)
-            self.cell(w3, 6, col3, border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        else:
-            self.cell(w1, 6, col1, border=1, fill=fill)
-            self.cell(0, 6, col2, border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    def table_header(self, cols):
+        self.set_font("helvetica", "B", 9)
+        self.set_fill_color(40, 50, 80)
+        self.set_text_color(255, 255, 255)
+        for text, w in cols:
+            self.cell(w, 6.5, text, border=1, fill=True)
+        self.ln()
         self.set_text_color(0, 0, 0)
+
+    def table_row(self, cols, shade=False):
+        self.set_font("helvetica", "", 9)
+        self.set_fill_color(242, 244, 252) if shade else self.set_fill_color(255, 255, 255)
+        for text, w in cols:
+            self.multi_cell(w, 6.5, text, border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.ln()
         self.set_fill_color(255, 255, 255)
 
-    def bullet(self, text, indent=5):
-        self.set_font('helvetica', '', 10)
-        self.set_x(self.get_x() + indent)
-        self.multi_cell(0, 5.5, f'  -  {text}')
-        self.ln(0.5)
+    def note_box(self, text, color=(230, 240, 255)):
+        self.set_fill_color(*color)
+        self.set_draw_color(120, 150, 200)
+        self.set_font("helvetica", "I", 9)
+        self.multi_cell(0, 5.5, f"  (i)  {text}", fill=True, border=1)
+        self.set_draw_color(0, 0, 0)
+        self.set_fill_color(255, 255, 255)
+        self.ln(2)
+
+    def warn_box(self, text):
+        self.note_box(text, color=(255, 245, 220))
+
+    def divider(self):
+        self.set_draw_color(180, 185, 210)
+        self.line(self.get_x(), self.get_y(), self.get_x() + 190, self.get_y())
+        self.set_draw_color(0, 0, 0)
+        self.ln(4)
 
 
 def create_pdf():
     pdf = PDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_margins(15, 15, 15)
 
-    # ============================================================
     # COVER PAGE
-    # ============================================================
     pdf.add_page()
+    pdf.ln(35)
+    pdf.set_font("helvetica", "B", 32)
+    pdf.set_text_color(20, 25, 40)
+    pdf.cell(0, 16, "TSX Trading Advisor", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(2)
+    pdf.set_font("helvetica", "", 18)
+    pdf.set_text_color(60, 80, 130)
+    pdf.cell(0, 10, "Technical Reference Manual", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(4)
+    pdf.set_font("helvetica", "I", 12)
+    pdf.set_text_color(110, 120, 150)
+    pdf.cell(0, 8, "Architecture, Configuration, Data Flow, AI Logic and Trading Rules",
+             align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(30)
-    pdf.set_font('helvetica', 'B', 28)
-    pdf.set_text_color(30, 30, 40)
-    pdf.cell(0, 14, 'TSX Trading Advisor', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font('helvetica', '', 16)
-    pdf.set_text_color(80, 80, 100)
-    pdf.cell(0, 10, 'Technical Reference Manual', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(6)
-    pdf.set_font('helvetica', 'I', 11)
-    pdf.set_text_color(130, 130, 150)
-    pdf.cell(0, 8, 'Architecture, Configuration, Data Flow, and AI Logic', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(20)
+    pdf.set_fill_color(235, 240, 255)
+    pdf.set_draw_color(150, 170, 220)
+    pdf.set_font("helvetica", "", 11)
+    pdf.set_text_color(40, 50, 90)
+    pdf.multi_cell(0, 8,
+        f"  Version:    {VERSION}\n"
+        f"  Generated:  {GENERATED}\n"
+        f"  Author:     Antigravity AI Agent\n"
+        f"  Repository: TSX-Trader (OneDrive)\n"
+        f"  Mode:       SHORT TERM (1-Week Momentum)",
+        fill=True, border=1)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(12)
+    pdf.set_font("helvetica", "I", 9)
+    pdf.set_text_color(160, 165, 180)
+    pdf.multi_cell(0, 5,
+        "This document is auto-generated and reflects the live codebase. "
+        "It is intended for the system operator only.")
+    pdf.set_text_color(0, 0, 0)
 
-    pdf.set_font('helvetica', '', 10)
-    pdf.set_text_color(100, 100, 120)
-    pdf.set_fill_color(245, 245, 252)
-    pdf.cell(0, 8, 'Classification: Confidential  |  Environment: Production  |  Platform: Windows / Python 3',
-             align='C', fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(25)
-
-    pdf.set_font('helvetica', 'B', 11)
-    pdf.set_text_color(30, 30, 40)
-    pdf.cell(0, 7, 'Table of Contents', new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
-    pdf.ln(3)
-
+    # TABLE OF CONTENTS
+    pdf.add_page()
+    pdf.set_font("helvetica", "B", 16)
+    pdf.set_text_color(20, 25, 40)
+    pdf.cell(0, 10, "Table of Contents", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.divider()
     toc = [
-        ('1.', 'System Architecture Overview'),
-        ('2.', 'File Structure & Roles'),
-        ('3.', 'Configuration Reference  (config.json / .env)'),
-        ('4.', 'Data Engine  (market_analyzer.py)'),
-        ('5.', 'Technical Indicator Reference'),
-        ('6.', 'AI Prompt System & Trading Rules'),
-        ('7.', 'Telegram Daemon  (telegram_daemon.py)'),
-        ('8.', 'Scheduled Cron Jobs & Automated Tasks'),
-        ('9.', 'Trade Ledger  (trades.csv)'),
-        ('10.', 'Advice History System  (advice_history.txt)'),
-        ('11.', 'Dependency Reference  (requirements.txt)'),
-        ('12.', 'Security Hardening'),
-        ('13.', 'Operational Runbook'),
-        ('14.', 'Troubleshooting Guide'),
+        ("1.", "System Overview"),
+        ("2.", "Architecture and Data Flow"),
+        ("3.", "File Inventory"),
+        ("4.", "Configuration Reference (config.json)"),
+        ("5.", "Market Dossier Structure"),
+        ("6.", "AI Trading Rules and Logic"),
+        ("7.", "Trading Prompt System Instructions"),
+        ("8.", "Telegram Security Protocol"),
+        ("9.", "Session Restore Procedure"),
+        ("10.", "Known Limitations and Operational Notes"),
     ]
-    pdf.set_font('helvetica', '', 10)
-    pdf.set_text_color(40, 40, 60)
     for num, title in toc:
-        pdf.cell(15, 6, num)
-        pdf.cell(0, 6, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("helvetica", "", 11)
+        pdf.set_text_color(20, 25, 40)
+        pdf.cell(20, 7, num)
+        pdf.cell(0, 7, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    # ============================================================
-    # PAGE 1: SYSTEM ARCHITECTURE OVERVIEW
-    # ============================================================
+    # CHAPTER 1: SYSTEM OVERVIEW
     pdf.add_page()
-    pdf.chapter_title('1. System Architecture Overview')
-
+    pdf.chapter_title("1", "System Overview")
     pdf.body(
-        'The TSX Trading Advisor is a locally-running, fully automated stock analysis and portfolio management system. '
-        'It is built entirely on free, open-source Python libraries and requires no paid brokerage API. It connects '
-        'to Yahoo Finance for real-time market data, fetches qualitative news from Yahoo Finance RSS and Google News RSS, '
-        'and uses the Antigravity AI agent (running natively in the Antigravity session, no external API key required) '
-        'to synthesize quantitative and qualitative signals into plain-language trading recommendations delivered via Telegram.'
+        "TSX Trading Advisor is a zero-cost, single-user autonomous stock trading assistant "
+        "for Canadian equities on the Toronto Stock Exchange. It continuously monitors a user-defined "
+        "portfolio, fetches live market data and news, and delivers scheduled AI-generated "
+        "BUY/SELL/HOLD recommendations via Telegram.\n\n"
+        "The system runs entirely locally on a Windows machine using Python. There are no cloud "
+        "services, no subscription fees, and no external AI API keys. All AI reasoning is performed "
+        "natively by the Antigravity agent session."
     )
-
-    pdf.section_title('1.1 Core Execution Paths')
-    pdf.body(
-        'The system runs along two independent, concurrent execution paths:'
-    )
-    pdf.bullet('PATH A - Telegram Daemon (telegram_daemon.py): A long-running foreground process started manually '
-               'via start_daemon.bat. It listens for Telegram messages, handles natural-language trade logging, '
-               'mode switching, on-demand analysis requests, and general Q&A. Messages are written to '
-               'incoming_queue.jsonl and read by the Antigravity agent via file_watcher.py.')
-    pdf.bullet('PATH B - Antigravity Agent (Native Cron): The Antigravity AI agent runs three native cron tasks '
-               '(hourly, 3:30 PM, 4:05 PM ET on weekdays). It generates a dossier directly by calling market_analyzer.py '
-               'and sends the resulting recommendation to Telegram by writing to outgoing_queue.jsonl. '
-               'No external LLM API key is needed; all AI reasoning is performed natively by the Antigravity agent.')
+    pdf.section_title("Key Characteristics")
+    pdf.bullet("Horizon: SHORT TERM (1-week momentum and mean-reversion)")
+    pdf.bullet("Data: Live prices, technical indicators, and news fetched every 30 minutes")
+    pdf.bullet("Delivery: Telegram Bot messages to the operator's phone")
+    pdf.bullet("Control: Operator logs trades via natural language text messages to the bot")
+    pdf.bullet("Portfolio: Configurable tickers in config.json")
+    pdf.bullet("Scheduling: 30-minute scans (10:00 AM - 3:30 PM ET) + EOD summary (4:05 PM ET)")
     pdf.ln(2)
-
-    pdf.section_title('1.2 Data Flow Diagram')
-    pdf.code_block(
-        'config.json --------------------------------------------------+\n'
-        'trades.csv  --------------------------------------------------+\n'
-        '                                                              |\n'
-        '                                                     market_analyzer.py\n'
-        '                                   +-------------------------+\n'
-        '                                   |  log_advice()            -> advice_history.txt (w/lock)\n'
-        '                                   |  get_acb_and_balances()  -> ACB, cash, P&L, stop-loss flag\n'
-        '                                   |  get_stock_data()        -> OHLC, price, indicators\n'
-        '                                   |  get_compartmentalized_news() -> Yahoo RSS + Google News\n'
-        '                                   |  get_cleaned_advice_history() -> rolling advice log (pruned)\n'
-        '                                   |  generate_dossier()      -> assembled text blob\n'
-        '                                   +--------+----------------+\n'
-        '                                            |\n'
-        '                         +------------------+-------------------+\n'
-        '                         |                                      |\n'
-        '               telegram_daemon.py                   Antigravity Agent\n'
-        '               (interactive/trades)            (cron: hourly/3:30PM/4:05PM)\n'
-        '                         |                                      |\n'
-        '               incoming_queue.jsonl                    Native AI Reasoning\n'
-        '                         |                                      |\n'
-        '               file_watcher.py --> Antigravity            outgoing_queue.jsonl\n'
-        '                         |              |                       |\n'
-        '                         |        Native AI Reasoning    telegram_daemon.py\n'
-        '                         |              |                       |\n'
-        '                         +--------------+-----------------------+\n'
-        '                                        |\n'
-        '                           Telegram reply to user + log_advice()'
+    pdf.section_title("What the System Does NOT Do")
+    pdf.bullet("It does NOT execute trades automatically. All trades must be placed manually.")
+    pdf.bullet("It does NOT access broker APIs or brokerage accounts.")
+    pdf.warn_box(
+        "IMPORTANT: This tool provides AI-generated trading suggestions only. "
+        "All investment decisions are the sole responsibility of the operator."
     )
 
-    pdf.section_title('1.3 Technology Stack')
-    pdf.table_row('Component', 'Technology / Library', 'Version', header=True)
-    pdf.table_row('Market Data', 'yfinance (Yahoo Finance)', '1.4.1')
-    pdf.table_row('Technical Indicators', 'pandas-ta', '0.4.71b0')
-    pdf.table_row('Data Frames', 'pandas', '3.0.1')
-    pdf.table_row('AI Reasoning', 'Antigravity Agent (native, no API key required)', 'session-native')
-    pdf.table_row('News (Qualitative)', 'Yahoo Finance RSS + Google News RSS', 'live')
-    pdf.table_row('Telegram Messaging', 'python-telegram-bot', '22.8')
-    pdf.table_row('Secrets Management', 'python-dotenv', '1.2.2')
-    pdf.table_row('HTTP Requests', 'requests', 'latest')
-    pdf.table_row('PDF Generation', 'fpdf2', '2.8.7')
-    pdf.table_row('Message Bridge', 'file_watcher.py (incoming_queue.jsonl)', 'custom')
-    pdf.table_row('Runtime', 'Python (Miniforge)', '3.x')
+    # CHAPTER 2: ARCHITECTURE
+    pdf.add_page()
+    pdf.chapter_title("2", "Architecture and Data Flow")
+    pdf.section_title("2.1 High-Level Architecture")
+    pdf.body(
+        "The system is split into three distinct layers: a deterministic Data Engine, "
+        "an AI Reasoning Layer, and a Telegram Delivery Layer. These communicate via local "
+        "JSONL queue files, creating a clean, fault-tolerant bridge."
+    )
+    pdf.code_block(
+        "  [Telegram User]\n"
+        "       |\n"
+        "       v  (sends message)\n"
+        "  [telegram_daemon.py]  <--- Runs 24/7 via start_daemon.bat\n"
+        "       |\n"
+        "       v  (writes to)\n"
+        "  [incoming_queue.jsonl]\n"
+        "       |\n"
+        "       v  (monitored by)\n"
+        "  [file_watcher.py]  <--- Background process, loops continuously\n"
+        "       |\n"
+        "       v  (prints NEW_MESSAGE to stdout, wakes)\n"
+        "  [Antigravity Agent]  <--- The AI brain\n"
+        "       |\n"
+        "       +--> runs market_analyzer.generate_dossier()\n"
+        "       +--> reasons natively, writes analysis\n"
+        "       |\n"
+        "       v  (writes to)\n"
+        "  [outgoing_queue.jsonl]\n"
+        "       |\n"
+        "       v  (polled every 2s by)\n"
+        "  [telegram_daemon.py]  ---> [Telegram User]\n"
+        "                         +-> log_advice(advice_history.txt)"
+    )
+    pdf.section_title("2.2 Scheduled Analysis Flow")
+    pdf.table_header([("Task", 55), ("Cron Expression", 65), ("Description", 70)])
+    sched = [
+        ("30-min Market Scan", "0,30 10-15 * * 1-5", "Full dossier + BUY/SELL/HOLD"),
+        ("End-of-Day Summary", "5 16 * * 1-5", "Portfolio recap + next-day outlook"),
+    ]
+    for i, (a, b, c) in enumerate(sched):
+        pdf.table_row([(a, 55), (b, 65), (c, 70)], shade=(i % 2 == 1))
     pdf.ln(3)
+    pdf.section_title("2.3 Advice History and Memory")
+    pdf.body(
+        "Every message sent through outgoing_queue.jsonl is automatically logged to "
+        "advice_history.txt by telegram_daemon.py. This provides the AI with rolling "
+        "memory of its own prior advice. The get_cleaned_advice_history() function "
+        "trims the file on each dossier generation to retain: up to the last 5 entries "
+        "from today plus the final entry from the prior 5 calendar days."
+    )
+    pdf.note_box(
+        "An OS-level file lock (advice.lock) prevents corruption from concurrent writes. "
+        "Stale lock files older than 30 seconds are automatically removed."
+    )
 
-    # ============================================================
-    # PAGE 2: FILE STRUCTURE
-    # ============================================================
+    # CHAPTER 3: FILE INVENTORY
     pdf.add_page()
-    pdf.chapter_title('2. File Structure & Roles')
-
-    pdf.table_row('File', 'Role', header=True)
-    pdf.table_row('market_analyzer.py', 'Core data engine. Computes indicators, fetches news from Yahoo RSS + Google News, builds the dossier, and generates all LLM prompts. Also owns log_advice().')
-    pdf.table_row('telegram_daemon.py', 'Long-running bot server. Listens for Telegram messages; writes them to incoming_queue.jsonl and sends outgoing messages from outgoing_queue.jsonl.')
-    pdf.table_row('file_watcher.py', 'Lightweight bridge. Polls incoming_queue.jsonl and prints new messages to stdout to wake up the Antigravity agent.')
-    pdf.table_row('send_telegram.py', 'Standalone CLI utility. Sends a text string via Telegram Bot API and logs advice to advice_history.txt.')
-    pdf.table_row('generate_pdf.py', 'Generates this PDF documentation from source.')
-    pdf.table_row('config.json', 'Runtime configuration. Controls active mode (SHORT/MEDIUM), portfolio-to-news-topic mapping (including sector/macro search terms), and stop_loss_pct.')
-    pdf.table_row('trades.csv', 'Source of truth for all holdings. Records every trade; used to calculate ACB and cash balance.')
-    pdf.table_row('advice_history.txt', 'Rolling log of AI-generated advice. Injected into every new dossier for context continuity.')
-    pdf.table_row('incoming_queue.jsonl', 'JSONL file written by telegram_daemon.py. Each line is a user message from Telegram.')
-    pdf.table_row('outgoing_queue.jsonl', 'JSONL file written by Antigravity agent. Messages here are sent to Telegram by telegram_daemon.py.')
-    pdf.table_row('.env', 'Secrets file. Contains TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID only.')
-    pdf.table_row('.gitignore', 'Excludes .env, trades.csv, advice_history.txt, and *.lock files from version control.')
-    pdf.table_row('start_daemon.bat', 'Windows batch file to launch telegram_daemon.py from the correct working directory.')
-    pdf.table_row('requirements.txt', 'Pinned Python dependency list for reproducible installs.')
-    pdf.table_row('AGENT_RESTORE_INSTRUCTIONS.md', 'Instructions for an AI agent to restore the system if the Antigravity session is lost.')
+    pdf.chapter_title("3", "File Inventory")
+    pdf.section_title("3.1 Core Python Scripts")
+    pdf.table_header([("File", 58), ("Role", 132)])
+    files = [
+        ("market_analyzer.py", "Core data engine: prices, indicators, dossier, advice history, prompt templates"),
+        ("telegram_daemon.py", "Telegram bot relay: receives messages, polls queue, sends responses, logs all advice"),
+        ("file_watcher.py", "Queue bridge: loops continuously, watches incoming_queue.jsonl, wakes agent on new messages"),
+        ("generate_pdf.py", "Documentation generator: produces this PDF from source"),
+        ("quiet_watchdog.py", "Optional: monitors file_watcher.py process and restarts it if it crashes (checks every 10 min)"),
+    ]
+    for i, (a, b) in enumerate(files):
+        pdf.table_row([(a, 58), (b, 132)], shade=(i % 2 == 1))
     pdf.ln(3)
-
-    # ============================================================
-    # PAGE 3: CONFIGURATION REFERENCE
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('3. Configuration Reference')
-
-    pdf.section_title('3.1  config.json')
-    pdf.body(
-        'This file controls the operating mode and portfolio composition. It is read at runtime by market_analyzer.py '
-        'on every dossier generation. The user can modify the mode via Telegram by sending "Short Term Mode" or "Medium Term Mode".'
-    )
-    pdf.code_block(
-        '{\n'
-        '    "mode": "SHORT",           // "SHORT" or "MEDIUM"\n'
-        '    "portfolio": {\n'
-        '        "CNQ.TO": ["CNQ.TO", "CL=F", "canadian+oil+sector", "OPEC+oil+production"],\n'
-        '        "ABX.TO": ["ABX.TO", "GC=F", "gold+mining+sector", "federal+reserve+interest+rate"]\n'
-        '    },\n'
-        '    "stop_loss_pct": 5.0       // % drop below ACB that triggers a mandatory SELL directive\n'
-        '}'
-    )
-    pdf.bullet('"mode": Controls which technical indicators are computed and which AI system instructions are used.')
-    pdf.bullet('"portfolio": Keys are TSX ticker symbols. Values are lists of news search topics. '
-               'Valid Yahoo Finance ticker symbols (e.g. CL=F, GC=F) are also fetched via Yahoo RSS and their '
-               'live price/daily change is injected into the Macro Commodities dossier section. '
-               'Plain text search terms (e.g. "canadian+oil+sector") are fetched from Google News RSS only '
-               'and contribute qualitative headlines without generating price data.')
-    pdf.bullet('"stop_loss_pct": The maximum acceptable loss percentage before the system injects a hard '
-               'STOP-LOSS TRIGGERED directive into the dossier. Default is 5.0%.')
-    pdf.bullet('To add a new stock, add a new key-value pair to "portfolio". The system will automatically '
-               'fetch data and news for it on the next run. No code changes required.')
+    pdf.section_title("3.2 Configuration and Data Files")
+    pdf.table_header([("File", 58), ("Purpose", 132)])
+    configs = [
+        ("config.json", "Portfolio tickers, news search terms, operating mode (SHORT/MEDIUM), stop-loss %"),
+        ("trades.csv", "Trade ledger: BUY/SELL history, Adjusted Cost Base, running cash balance"),
+        ("advice_history.txt", "Rolling log of all AI advice sent to Telegram"),
+        (".env", "Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PIN, TELEGRAM_PIN_HINT"),
+        (".gitignore", "Excludes .env, *.lock, __pycache__, queue files from git"),
+        ("requirements.txt", "Python dependencies for pip installation (includes psutil)"),
+        ("start_daemon.bat", "Windows launcher: double-click to start telegram_daemon.py"),
+        ("AGENT_RESTORE_INSTRUCTIONS.md", "Step-by-step AI session restore guide"),
+        (".agents/AGENTS.md", "Persistent agent rules: trading strategy overrides and security protocol"),
+    ]
+    for i, (a, b) in enumerate(configs):
+        pdf.table_row([(a, 58), (b, 132)], shade=(i % 2 == 1))
     pdf.ln(3)
+    pdf.section_title("3.3 Runtime Queue Files (transient)")
+    pdf.table_header([("File", 58), ("Purpose", 132)])
+    queues = [
+        ("incoming_queue.jsonl", "Telegram messages from user, waiting for AI processing"),
+        ("incoming_processing.jsonl", "Atomic rename during processing (prevents double-read)"),
+        ("outgoing_queue.jsonl", "AI responses queued for Telegram delivery"),
+        ("outgoing_processing.jsonl", "Atomic rename during daemon polling"),
+        ("advice.lock", "OS-level mutex protecting advice_history.txt writes"),
+    ]
+    for i, (a, b) in enumerate(queues):
+        pdf.table_row([(a, 58), (b, 132)], shade=(i % 2 == 1))
+    pdf.note_box("Queue files are ephemeral and not committed to git. Created automatically at runtime.")
 
-    pdf.section_title('3.2  .env  (Secrets)')
-    pdf.body(
-        'All credentials are stored in a .env file in the project root. This file is excluded from version control '
-        'by .gitignore. Never commit this file. Note: No Gemini or LLM API key is required -- all AI reasoning '
-        'is performed natively by the Antigravity agent session.'
-    )
+    # CHAPTER 4: CONFIG.JSON
+    pdf.add_page()
+    pdf.chapter_title("4", "Configuration Reference (config.json)")
+    pdf.body("config.json is the single control plane for the system.")
     pdf.code_block(
-        'TELEGRAM_BOT_TOKEN=xxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n'
-        'TELEGRAM_CHAT_ID=xxxxxxxxx    # Used by BOTH send_telegram.py AND telegram_daemon.py'
+        "{\n"
+        "  \"mode\": \"SHORT\",\n"
+        "  \"stop_loss_pct\": 5.0,\n"
+        "  \"portfolio\": {\n"
+        "    \"CNQ.TO\": [\n"
+        "      \"CNQ.TO\",\n"
+        "      \"CL=F\",\n"
+        "      \"canadian+oil+sector\",\n"
+        "      \"OPEC+oil+production\"\n"
+        "    ],\n"
+        "    \"CLS.TO\": [\n"
+        "      \"CLS.TO\",\n"
+        "      \"Celestica+electronics\",\n"
+        "      \"electronics+manufacturing+services\",\n"
+        "      \"supply+chain+hardware\"\n"
+        "    ]\n"
+        "  }\n"
+        "}"
     )
-    pdf.bullet('TELEGRAM_BOT_TOKEN: BotFather API token. Required by both the daemon and send_telegram.py.')
-    pdf.bullet('TELEGRAM_CHAT_ID: Your numeric Telegram chat ID. Used by send_telegram.py to push outbound messages, '
-               'and by telegram_daemon.py to authorize inbound messages. A single key serves both purposes.')
+    pdf.section_title("Fields")
+    pdf.table_header([("Field", 50), ("Type", 30), ("Description", 110)])
+    flds = [
+        ("mode", "string", "\"SHORT\" (1-week momentum) or \"MEDIUM\" (2-4 week swing). Controls indicators used."),
+        ("stop_loss_pct", "float", "If a position drops this % below ACB, a mandatory SELL directive is injected into the dossier."),
+        ("portfolio", "object", "Keys are ticker symbols. Values are arrays of news search topics."),
+    ]
+    for i, (a, b, c) in enumerate(flds):
+        pdf.table_row([(a, 50), (b, 30), (c, 110)], shade=(i % 2 == 1))
     pdf.ln(3)
-
-    pdf.section_title('3.3  Changing Operating Mode')
+    pdf.section_title("Portfolio News Topics (per-ticker array)")
     pdf.body(
-        'Mode can be changed at runtime without restarting the daemon by sending a message to the Telegram bot.'
+        "Each entry in the array can be:\n"
+        "  - A ticker symbol (e.g. \"CNQ.TO\") - fetched from Yahoo Finance RSS\n"
+        "  - A commodity symbol (e.g. \"CL=F\") - used as a macro price tracker\n"
+        "  - A plain-text search term (e.g. \"canadian+oil+sector\") - searched on Google News"
     )
+    pdf.warn_box(
+        "Use full company names for Google News terms, not bare tickers. "
+        "\"Canadian+Pacific+Kansas+City\" returns far more relevant results than \"CP\"."
+    )
+
+    # CHAPTER 5: DOSSIER STRUCTURE
+    pdf.add_page()
+    pdf.chapter_title("5", "Market Dossier Structure")
+    pdf.body(
+        "The dossier is a structured plain-text document generated by market_analyzer.generate_dossier() "
+        "on every scheduled scan or manual analysis request. It contains five sections."
+    )
+    pdf.section_title("Section 1: Mode and Timestamp")
     pdf.code_block(
-        'User sends:  "change mode"\n'
-        'Bot replies: "Please reply with Short Term Mode or Medium Term Mode"\n'
-        'User sends:  "Short Term Mode"\n'
-        'Bot replies: "Operating mode successfully updated to: SHORT TERM"'
+        "=== CURRENT MODE: SHORT TERM (1-WEEK HORIZON) ===\n"
+        "Date: 2026-06-23 14:30:01 ET"
+    )
+    pdf.section_title("Section 2: Portfolio and Pricing (per ticker)")
+    pdf.table_header([("Field", 70), ("Description", 120)])
+    dossier_fields = [
+        ("Shares Owned", "From trades.csv ledger"),
+        ("Avg Purchase Price (ACB)", "Adjusted Cost Base computed from trade history"),
+        ("Current Market Price", "Live price from yfinance"),
+        ("Previous Close", "Prior day closing price"),
+        ("Gap %", "Overnight gap: (Open - PrevClose) / PrevClose"),
+        ("Open / High / Low", "Intraday OHLC from yfinance"),
+        ("Intraday Trend %", "How far current price is above the Low of Day"),
+        ("Unrealised P&L", "Dollar and % profit/loss on current position"),
+        ("STOP-LOSS Alert", "Injected if price is > stop_loss_pct% below ACB"),
+        ("Vol Ratio (10-day)", "Volume divided by 10-day average volume"),
+        ("EMA Crossover", "Explicit BULLISH / BEARISH / NEUTRAL label (EMA5 vs EMA9)"),
+        ("EMA (5-day)", "5-day Exponential Moving Average"),
+        ("EMA (9-day)", "9-day Exponential Moving Average"),
+        ("RSI (7-day)", "7-period Relative Strength Index"),
+        ("ATR (5-day)", "Average True Range (5-period)"),
+        ("Bollinger Lower/Mid/Upper", "20-period Bollinger Bands (2 std deviations)"),
+    ]
+    for i, (a, b) in enumerate(dossier_fields):
+        pdf.table_row([(a, 70), (b, 120)], shade=(i % 2 == 1))
+    pdf.ln(2)
+    pdf.note_box("In MEDIUM mode: RSI (14-day), SMA (50-day), BB (50-period), Ex-Dividend Date are used instead.")
+    pdf.section_title("Section 3: Macro Commodities")
+    pdf.body("Commodity symbols (e.g. CL=F, GC=F) are shown as a standalone macro context with current price and daily % change vs open.")
+    pdf.section_title("Section 4: Qualitative News (up to 10 headlines per topic)")
+    pdf.bullet("[NEW] = published within the last 4 hours")
+    pdf.bullet("[RECENT] = published 4-12 hours ago")
+    pdf.bullet("[OLD] = published 12-48 hours ago")
+    pdf.bullet("[MACRO], [EARNINGS], [ANALYST], or [NEWS] category label")
+    pdf.bullet("200-character summary from the RSS description field")
+    pdf.section_title("Section 5: Previous Advice History")
+    pdf.body(
+        "A rolling window of past AI analysis. The LLM receives up to the last 5 entries from "
+        "today plus the final entry from the preceding 5 calendar days. Weekends are NOT filtered."
     )
 
-    # ============================================================
-    # PAGE 4: DATA ENGINE
-    # ============================================================
+    # CHAPTER 6: TRADING RULES
     pdf.add_page()
-    pdf.chapter_title('4. Data Engine (market_analyzer.py)')
-
+    pdf.chapter_title("6", "AI Trading Rules and Logic")
     pdf.body(
-        'market_analyzer.py is the central data and prompt generation engine. All other components '
-        'import from it. It now loads config.json exactly ONCE per generate_dossier() call and passes '
-        'the parsed config object to all sub-functions, eliminating any risk of a mid-generation '
-        'config race condition.'
+        "Trading rules live in two locations: system prompt instructions in "
+        "market_analyzer.get_analysis_prompt() and persistent override rules in .agents/AGENTS.md. "
+        "AGENTS.md takes precedence."
     )
+    pdf.section_title("6.1 System Prompt Rules (SHORT mode)")
+    rules = [
+        ("1. No Falling Knives", "EMA5 < EMA9 means a downtrend is active. Do not assume snap-back. Wait for crossover or volume shock before BUY."),
+        ("2. Volume Capitulation", "Vol_Ratio > 1.25 during a drop = panic selling exhausted. Bullish reversal signal."),
+        ("3. Market Open Rule", "Before 9:30 AM ET, never recommend buying. Wait 30 minutes for HFT volatility to settle."),
+        ("4. Buy the Rumour", "Anticipate macro events within 24-48h. Override oversold technicals with HOLD/SELL if event removes a market premium."),
+        ("5. Cash Constraint", "Check Available Free Cash before every BUY. No cash = no BUY."),
+        ("6. Tranching", "Deploy free cash in tranches (e.g. 25%) instead of all at once."),
+        ("7. Stop-Loss Enforcement", "Position > stop_loss_pct% below ACB = MUST SELL, regardless of RSI."),
+        ("8. Profit-Taking", "Position touches Upper Bollinger Band AND RSI > 70 = trim position."),
+        ("9. Zero-Share Rule", "0 shares + no BUY = AVOID or IGNORE (not HOLD)."),
+        ("10. Acknowledge Failures", "If previous advice was wrong, explicitly say so. Do not repeat a failed thesis."),
+        ("11. Macro Override", "RSI < 25 + top-tier macro catalyst = Speculative Macro Entry allowed (small position)."),
+    ]
+    for title, desc in rules:
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(0, 6, f"  Rule {title}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_x(pdf.get_x() + 10)
+        pdf.multi_cell(0, 5.5, desc)
+        pdf.ln(1)
 
-    pdf.section_title('4.1  Function Reference')
+    pdf.section_title("6.2 AGENTS.md Persistent Override Rules")
+    agent_rules = [
+        ("Target Sell Price on BUY", "Every BUY must include a Target Sell Price (Upper BB or ATR-based) and Stop Loss Price for the broker."),
+        ("Low-Volume Scaled Entry", "Bullish EMA crossover without high volume: recommend BUY at 25-50% position size, labeled 'Low-Volume Scaled Entry'."),
+        ("Momentum Breakout Exception", "Bullish EMA crossover + RSI > 60 + green sector: Low-Volume Scaled Entry at 25% allocation still allowed."),
+        ("Time-of-Day Filter", "Never initiate Low-Volume Scaled Entry between 11:00 AM and 2:00 PM ET."),
+        ("Intraday Reversal Trigger", "Drop >1.25% below open + RSI < 35 + rebounds within two 30-min intervals: speculative Reversal Buy on partial position."),
+    ]
+    for title, desc in agent_rules:
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(0, 6, f"  - {title}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_x(pdf.get_x() + 12)
+        pdf.multi_cell(0, 5.5, desc)
+        pdf.ln(1)
 
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'log_advice(text)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Centralized writer for advice_history.txt. Acquires a filesystem lockfile (advice.lock) before '
-             'writing, retrying up to 50 times (5s total) if the lock is already held by another process. '
-             'Releases the lock in a finally block. Used by both send_telegram.py and telegram_daemon.py.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_current_mode(config=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Returns "SHORT" or "MEDIUM". Accepts an optional pre-loaded config dict to avoid a redundant file read. Falls back to reading config.json directly if no config is passed.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_tickers(config=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Returns a list of ticker symbols from the portfolio keys. Accepts an optional pre-loaded config dict. '
-             'Falls back to ["CNQ.TO", "ABX.TO"] if the file is absent.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_stop_loss_pct(config=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Returns the stop_loss_pct value from config.json (default 5.0). Accepts an optional pre-loaded config dict.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_acb_and_balances()', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Reads trades.csv row by row and computes: (1) Adjusted Cost Base (ACB) per ticker. '
-        '(2) Available Cash from the last Cash_Balance column value. '
-        'Malformed rows with non-numeric values are silently skipped via try/except ValueError. '
-        'Returns: {"positions": {"CNQ.TO": {"shares": 100.0, "total_cost": 6012.0, "acb": 60.12}}, "cash": 5230.00}'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_stock_data(ticker_symbol, mode)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Fetches 6 months of OHLCV history via yfinance (timeout=10s). Now returns Open, High, and Low '
-        'in addition to Close, for all modes. Computes technical indicators via pandas-ta. '
-        'Wraps everything in try/except; returns an error string if the ticker is invalid.'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_compartmentalized_news(config=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Reads portfolio from config (or config.json directly), builds a unique list of news topics, then for each topic '
-        'fetches headlines from BOTH Yahoo Finance RSS and Google News RSS (timeout=10s each). '
-        'Headlines older than 48 hours are filtered out. Duplicates across sources are eliminated via a seen_titles set. '
-        'Each item is tagged with a freshness label (NEW/RECENT/OLD) based on age, and auto-categorized as '
-        '[MACRO], [EARNINGS], [ANALYST], or [NEWS] via keyword matching. The <description> field is extracted '
-        'and truncated to 200 characters to provide the AI with article summaries. '
-        'Results are sorted by recency and capped at 10 items per topic.'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_cleaned_advice_history()', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Reads advice_history.txt, parses entries by [YYYY-MM-DD HH:MM:SS] timestamp headers, and applies '
-        'two separate policies: (1) PHYSICAL FILE: Rewrites the file retaining ALL entries for today + the '
-        'last entry for each of the last 5 business days. Weekend entries are silently discarded. '
-        '(2) LLM CONTEXT STRING: Returns only the LAST 5 entries from today + the last entry from each '
-        'prior day. This keeps the LLM prompt token-efficient while the local log remains complete.'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'generate_dossier()', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'The main assembler. Loads config.json once, then calls all sub-functions passing the config object. '
-        'Sections: Unrealised P&L per holding, deterministic STOP-LOSS TRIGGERED directives, '
-        'Today Open/High/Low per ticker, a Macro Commodities section with live price and daily change '
-        'for recognized ticker symbols (e.g. CL=F, GC=F), and the new intelligent qualitative news section '
-        'with freshness scores, categories, and summaries from both Yahoo and Google News sources.'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_analysis_prompt(dossier=None, mode=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Wraps the dossier in the appropriate system instructions and output format rules for either SHORT '
-        'or MEDIUM mode. Used by the Antigravity agent for all analysis tasks: scheduled cron tasks, '
-        'on-demand requests from Telegram, and general Q&A.'
-    )
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'get_eod_summary_prompt(dossier=None)', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body(
-        'Wraps the dossier in special end-of-day instructions that suppress active trading advice '
-        'and instead request a narrative summary of portfolio performance and next-day outlook. '
-        'Used exclusively by the 4:05 PM cron task.'
-    )
-
-    # ============================================================
-    # PAGE 5: TECHNICAL INDICATOR REFERENCE
-    # ============================================================
+    # CHAPTER 7: PROMPT SYSTEM
     pdf.add_page()
-    pdf.chapter_title('5. Technical Indicator Reference')
+    pdf.chapter_title("7", "Trading Prompt System Instructions")
+    pdf.body(
+        "The AI receives one of two prompt templates selected by config.json mode. "
+        "Both embed the full dossier and all system rules inline."
+    )
+    pdf.section_title("7.1 SHORT Mode Output Format")
+    pdf.bullet("Brief introduction (1 sentence)")
+    pdf.bullet("Prioritised action list: e.g. '1. SELL CNQ.TO, 2. BUY ABX.TO' or 'No immediate actions recommended'")
+    pdf.bullet("Detailed breakdown ONLY for action stocks (max 3 sentences per stock, must include current price)")
+    pdf.ln(2)
+    pdf.section_title("7.2 EOD Summary Output Format")
+    pdf.bullet("End-of-Day Market Summary (1-2 sentences)")
+    pdf.bullet("Portfolio Performance: status of all held assets (ignore 0-share positions)")
+    pdf.bullet("Outlook Ahead: 2-3 sentences on tomorrow based on price action, volume, and macro news")
+    pdf.note_box("The EOD prompt explicitly instructs the AI NOT to recommend new trades.")
 
-    pdf.section_title('5.1  SHORT Mode Indicators  (mode = "SHORT")')
-    pdf.body('Designed for a 5-to-7 day momentum trading horizon. Optimized for mean-reversion signals.')
+    # CHAPTER 8: SECURITY
+    pdf.add_page()
+    pdf.chapter_title("8", "Telegram Security Protocol")
+    pdf.body(
+        "Because the Telegram bot relays messages directly to the AI agent which can run commands "
+        "and edit files, a PIN challenge protocol is enforced to prevent unauthorized remote code execution."
+    )
+    pdf.section_title("8.1 Triggers Requiring PIN Verification")
+    pdf.bullet("Editing any .py source file")
+    pdf.bullet("Editing .agents/AGENTS.md or .env")
+    pdf.bullet("Running arbitrary system or PowerShell commands")
+    pdf.bullet("Any action modifying the codebase or host system")
+    pdf.ln(2)
+    pdf.section_title("8.2 PIN Challenge Flow")
+    pdf.code_block(
+        "  [Telegram: code change request]\n"
+        "         |\n"
+        "         v\n"
+        "  AI writes PIN challenge to outgoing_queue.jsonl\n"
+        "  (includes TELEGRAM_PIN_HINT from .env)\n"
+        "         |\n"
+        "         v\n"
+        "  [User replies with 8-digit PIN]\n"
+        "         |\n"
+        "         v\n"
+        "  AI validates against TELEGRAM_PIN in .env\n"
+        "  Correct: proceed  |  Wrong: refuse and log"
+    )
+    pdf.section_title("8.3 Local User Exception")
+    pdf.body("Requests from the local Antigravity interface (USER_REQUEST tags) are fully trusted. No PIN required.")
+    pdf.section_title("8.4 Environment Variables")
+    pdf.table_header([("Variable", 70), ("Description", 120)])
+    env_rows = [
+        ("TELEGRAM_BOT_TOKEN", "API token from @BotFather. Authenticates with the Telegram API."),
+        ("TELEGRAM_CHAT_ID", "Numeric chat ID of the operator. All other chat IDs are rejected."),
+        ("TELEGRAM_PIN", "8-digit PIN for remote code change authentication."),
+        ("TELEGRAM_PIN_HINT", "Hint phrase sent to user when PIN challenge is issued."),
+    ]
+    for i, (a, b) in enumerate(env_rows):
+        pdf.table_row([(a, 70), (b, 120)], shade=(i % 2 == 1))
+    pdf.warn_box("NEVER commit .env to git. Listed in .gitignore. Back up your bot token and PIN securely.")
 
-    pdf.table_row('Indicator', 'Parameters', 'Interpretation', header=True)
-    pdf.table_row('EMA (Exponential Moving Average)', '5-day, 9-day', 'Short-term momentum direction. EMA_5 crossing above EMA_9 is bullish.')
-    pdf.table_row('RSI (Relative Strength Index)', '7-day', 'Overbought >70, Oversold <30. Faster than standard 14-day for short-term.')
-    pdf.table_row('ATR (Average True Range)', '5-day', 'Measures raw volatility. Used to set stop-loss distances.')
-    pdf.table_row('Bollinger Bands', '20-day, 2 std devs', 'Price below BB_Lower = oversold/compressed. Price above BB_Upper = overbought.')
-    pdf.table_row('Vol_Ratio', '10-day rolling avg', 'Volume / 10-day average. >2.0 during a drop signals capitulation (exhausted sellers).')
+    # CHAPTER 9: SESSION RESTORE
+    pdf.add_page()
+    pdf.chapter_title("9", "Session Restore Procedure")
+    pdf.body("If the Antigravity agent session is lost (reboot, context expiry), restore in this order:")
+    pdf.section_title("Step 1: Start the Telegram Daemon (User Action)")
+    pdf.body("Double-click start_daemon.bat, or run:")
+    pdf.code_block("C:\\Users\\Aamir\\miniforge3\\python.exe telegram_daemon.py")
+    pdf.section_title("Step 2: Start the File Watcher (Agent Action)")
+    pdf.body("The agent starts file_watcher.py as a background task:")
+    pdf.code_block("C:\\Users\\Aamir\\miniforge3\\python.exe file_watcher.py")
+    pdf.note_box("file_watcher.py now runs in a continuous loop and does NOT exit after one message (fixed in v1.0.1).")
+    pdf.section_title("Step 3: Recreate Cron Schedules (Agent Action)")
+    pdf.table_header([("Task", 55), ("CronExpression", 60), ("Prompt Summary", 75)])
+    cron = [
+        ("30-min Market Scan", "0,30 10-15 * * 1-5", "[30-min Scan] Dossier + analysis -> outgoing_queue.jsonl"),
+        ("EOD Summary", "5 16 * * 1-5", "[EOD Summary] Dossier + EOD summary -> outgoing_queue.jsonl"),
+    ]
+    for i, (a, b, c) in enumerate(cron):
+        pdf.table_row([(a, 55), (b, 60), (c, 75)], shade=(i % 2 == 1))
     pdf.ln(3)
+    pdf.section_title("Step 4: Verify")
+    pdf.bullet("Send 'Analyze' via Telegram - agent should respond within 30 seconds")
+    pdf.bullet("Send '/status' via Telegram - daemon replies with uptime and queue sizes")
+    pdf.bullet("Check advice_history.txt is being updated after each analysis")
 
-    pdf.section_title('5.2  MEDIUM Mode Indicators  (mode = "MEDIUM")')
-    pdf.body('Designed for a 2-to-4 week swing trading horizon. Emphasizes mean price and income events.')
-
-    pdf.table_row('Indicator', 'Parameters', 'Interpretation', header=True)
-    pdf.table_row('RSI (Relative Strength Index)', '14-day', 'Standard 14-day RSI. Overbought >70, Oversold <30.')
-    pdf.table_row('SMA (Simple Moving Average)', '50-day', 'Key support/resistance level. Price above SMA_50 is structurally bullish.')
-    pdf.table_row('Bollinger Bands (Upper)', '50-day, 2 std devs', 'Profit-taking trigger. AI instructed to recommend trimming when price touches BB_Upper and RSI > 70.')
-    pdf.table_row('Ex-Dividend Date', 'from ticker.info', 'Upcoming ex-div dates affect entry timing. Holding before ex-date captures the dividend.')
-    pdf.ln(3)
-
-    pdf.section_title('5.3  ACB (Adjusted Cost Base) Calculation')
-    pdf.body(
-        'The system computes ACB from scratch on every run using a pure roll-forward method over trades.csv. '
-        'It does NOT rely on the stored Shares_Balance or Cash_Balance columns for ACB computation (only cash '
-        'reads from the column, for simplicity). The ACB formula:'
-    )
-    pdf.code_block(
-        'On BUY or INIT:\n'
-        '    shares += quantity\n'
-        '    total_cost += quantity * price\n'
-        '    acb = total_cost / shares\n'
-        '\n'
-        'On SELL:\n'
-        '    total_cost -= quantity * acb  # Reduce cost at current ACB, not sell price\n'
-        '    shares -= quantity\n'
-        '    # If shares drop to 0, reset total_cost and acb to 0.0'
-    )
-
-    # ============================================================
-    # PAGE 6: AI PROMPT SYSTEM
-    # ============================================================
+    # CHAPTER 10: LIMITATIONS
     pdf.add_page()
-    pdf.chapter_title('6. AI Prompt System & Trading Rules')
+    pdf.chapter_title("10", "Known Limitations and Operational Notes")
+    pdf.section_title("10.1 Market Data")
+    pdf.bullet("yfinance prices are delayed approximately 15 minutes for TSX equities.")
+    pdf.bullet("EMA, RSI, ATR indicators lag by one bar (prior day's close). The live price is current but indicators are historical.")
+    pdf.bullet("Intraday High/Low/Open reflect the current trading day only.")
+    pdf.section_title("10.2 News Quality")
+    pdf.bullet("Google News RSS is keyword-based. Use specific company names to minimize irrelevant results.")
+    pdf.bullet("Yahoo Finance RSS is limited to the ticker's own headlines.")
+    pdf.bullet("News older than 48 hours is automatically filtered.")
+    pdf.section_title("10.3 Advice History")
+    pdf.bullet("LLM context window receives last 5 entries from today + final entry from prior 5 calendar days.")
+    pdf.bullet("Weekends are NOT filtered (fixed in v1.0.1). Friday advice is preserved into Monday.")
+    pdf.bullet("advice_history.txt retains full history for human audit.")
+    pdf.section_title("10.4 Operational Constraints")
+    pdf.bullet("System requires the Antigravity agent session to be active during market hours.")
+    pdf.bullet("If the session is lost, incoming_queue.jsonl will accumulate unprocessed messages until restored.")
+    pdf.bullet("quiet_watchdog.py monitors file_watcher.py only - does NOT monitor the daemon or AI session.")
+    pdf.bullet("Very long AI responses are automatically chunked at 4,000 characters per Telegram message.")
+    pdf.section_title("10.5 Trade Logging")
+    pdf.bullet("All trades are logged manually via natural language Telegram messages.")
+    pdf.bullet("Cash balance is always read from the Cash_Balance column of the LAST row in trades.csv.")
+    pdf.bullet("ACB is computed by rolling forward every row in trades.csv from the beginning.")
+    pdf.bullet("Do not insert rows in the middle of trades.csv - this will corrupt the cash balance.")
 
-    pdf.body(
-        'The AI prompt system is the decision-making core of the advisor. The system instructions embedded '
-        'in the prompts constitute a formal rule set that the Gemini model must follow. These rules are '
-        'different depending on the active mode.'
-    )
-
-    pdf.section_title('6.1  Dossier Structure (Input to LLM)')
-    pdf.body('The dossier is a structured plain-text document assembled by generate_dossier(). It contains:')
-    pdf.bullet('Section 1: Current Mode header (SHORT or MEDIUM)')
-    pdf.bullet('Section 2: Date and timestamp')
-    pdf.bullet('Section 3: Portfolio & Pricing -- shares owned, ACB, current price, Today Open/High/Low, '
-               'Unrealised P&L, any STOP-LOSS TRIGGERED directives, and all technical indicators per ticker')
-    pdf.bullet('Section 4: Macro Commodities -- live price and daily % change (vs Open) for recognized ticker '
-               'symbols configured as news topics (e.g. CL=F for oil, GC=F for gold)')
-    pdf.bullet('Section 5: Qualitative Data -- up to 10 recent headlines per configured news topic, sourced '
-               'from both Yahoo Finance RSS and Google News RSS. Each headline is tagged with a freshness '
-               'label (NEW/RECENT/OLD), age in hours, article category [MACRO/EARNINGS/ANALYST/NEWS], and '
-               'a truncated article summary. Headlines older than 48 hours are excluded.')
-    pdf.bullet('Section 6: Previous Advice History -- last 5 entries from today + final entry from each of '
-               'the last 5 business days (weekend entries discarded)')
-    pdf.ln(2)
-
-    pdf.section_title('6.2  SHORT Mode System Instructions (all 10 rules)')
-    pdf.table_row('Rule #', 'Name', 'Description', header=True)
-    pdf.table_row('1', 'Trend Validation (No Falling Knives)', 'Do not assume a snap-back rally if EMA_5 < EMA_9. Wait for volume shock or crossover.')
-    pdf.table_row('2', 'Volume Shock / Capitulation', 'Vol_Ratio > 2.0 during a price drop = panic selling exhausted. Bullish reversal signal.')
-    pdf.table_row('3', 'Market Open Volatility', 'Before 9:30 AM ET, do NOT recommend buying. Wait 30 mins for irrational gaps to settle.')
-    pdf.table_row('4', 'Finalized Macro Events', 'If news confirms a deal is done, anticipate the asset moves inversely ("buy the rumour, sell the news").')
-    pdf.table_row('5', 'Cash Constraint', 'If free cash < cost of purchase, BUY is strictly forbidden.')
-    pdf.table_row('6', 'Position Sizing (Tranching)', 'Recommend buying in tranches (e.g., 25% of free cash) to mitigate intraday volatility.')
-    pdf.table_row('7', 'Protective Stop-Loss for Holds', 'Explicitly recommend to SELL if price drops more than the configured stop_loss_pct (default 5%) below ACB.')
-    pdf.table_row('8', 'Profit-Taking Mechanics', 'Price at BB_Upper AND RSI > 70 = recommend trimming position (e.g., sell 50%).')
-    pdf.table_row('9', 'Zero-Share Holdings', 'If 0 shares owned and not recommending BUY, use AVOID or IGNORE, not HOLD.')
-    pdf.table_row('10', 'Acknowledge Failed Theses', 'If previous predictions failed and the stock continues dropping, acknowledge this instead of blindly repeating the thesis.')
-    pdf.ln(3)
-
-    pdf.section_title('6.3  MEDIUM Mode System Instructions (6 rules)')
-    pdf.body('Medium mode uses rules 5-10 from above (Cash Constraint, Tranching, Protective Stop-Loss, Profit-Taking, Zero-Share, Failed Theses). '
-             'Rules 1-4 are omitted because Bollinger-based mean-reversion and volume shock are short-term signals '
-             'not relevant to a multi-week swing trading thesis. The SMA_50 and RSI_14 take their place as primary indicators.')
-    pdf.ln(2)
-
-    pdf.section_title('6.4  AI Output Format')
-    pdf.body('Both modes require the LLM to structure its response in exactly three sections:')
-    pdf.bullet('Section 1: A brief 1-2 sentence introduction summarizing the market environment.')
-    pdf.bullet('Section 2: A numbered list of priority actions (BUY, SELL, HOLD). AVOID and IGNORE are never listed here.')
-    pdf.bullet('Section 3: Stock-specific analysis for actioned stocks only. Maximum 3 sentences per stock. '
-               'Indicators integrated naturally into prose (not as bullet points).')
-    pdf.ln(2)
-
-    pdf.section_title('6.5  EOD Summary Prompt (4:05 PM Only)')
-    pdf.body(
-        'get_eod_summary_prompt() uses a different instruction set that suppresses active trading advice. '
-        'The AI is instructed to produce a 3-section response: (1) End-of-Day market summary, '
-        '(2) Portfolio performance for currently held positions only, (3) 2-3 sentence outlook for tomorrow '
-        'based on today\'s price action, volume, and breaking news.'
-    )
-
-    pdf.section_title('6.6  Two-Step Intent Detection (Q&A Optimization)')
-    pdf.body(
-        'When a user sends a free-form message to the Telegram bot (not "analyze" or a trade), the daemon '
-        'runs a two-step process to avoid wasting tokens:'
-    )
-    pdf.bullet('Step 1 (Lightweight): A micro-prompt is sent to Gemini asking only whether the message is a '
-               '"TRADE" or a "QUESTION". The prompt requests a JSON response. No dossier is included.')
-    pdf.bullet('Step 2A (TRADE path): If intent = TRADE, the extracted JSON (action, ticker, quantity, price) '
-               'is parsed and staged in memory as a pending_trade, awaiting YES/NO confirmation.')
-    pdf.bullet('Step 2B (QUESTION path): If intent = QUESTION, the full dossier is generated, appended to a '
-               'Q&A prompt, and sent to Gemini for a detailed response. This is the expensive path.')
-
-    # ============================================================
-    # PAGE 7: TELEGRAM DAEMON
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('7. Telegram Daemon (telegram_daemon.py)')
-
-    pdf.body(
-        'The Telegram daemon is a persistent Python process built on the python-telegram-bot library. '
-        'It uses long-polling (not webhooks) to receive messages. It must be started manually and runs '
-        'in the foreground.'
-    )
-
-    pdf.section_title('7.1  Message Routing Logic')
-    pdf.body('Incoming messages are routed through the following priority-ordered decision tree:')
-    pdf.code_block(
-        'Incoming message\n'
-        '   |\n'
-        '   +-- Is chat_id authorized? (matches TELEGRAM_CHAT_ID in .env)\n'
-        '   |       NO  -> Silently drop message (print to console only)\n'
-        '   |      YES  -> Continue\n'
-        '   |\n'
-        '   +-- Is there a pending_trade for this chat_id AND message is "yes"/"no"?\n'
-        '   |       YES -> Confirm or cancel staged trade -> update_ledger() -> done\n'
-        '   |\n'
-        '   +-- Message is "change mode"?\n'
-        '   |       YES -> Ask user to specify Short or Medium term mode\n'
-        '   |\n'
-        '   +-- Message is "short term mode" or "medium term mode"?\n'
-        '   |       YES -> Write new mode to config.json -> done\n'
-        '   |\n'
-        '   +-- Message is "analyze" or "analysis"?\n'
-        '   |       YES -> get_analysis_prompt() -> Gemini -> send_chunked_reply() -> log_advice()\n'
-        '   |\n'
-        '   +-- Everything else -> Two-step intent extraction\n'
-        '           TRADE intent    -> stage in pending_trades -> ask for confirmation\n'
-        '           QUESTION intent -> generate_dossier() -> Gemini Q&A -> reply'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('7.1a  Available Commands')
-    pdf.table_row('Command / Message', 'Response', header=True)
-    pdf.table_row('/start', 'Welcome message with brief instructions.')
-    pdf.table_row('/help', 'Full capability list: trade logging, analyze, change mode, Q&A.')
-    pdf.table_row('analyze (or analysis)', 'Generates a full live market analysis with trading recommendations.')
-    pdf.table_row('change mode', 'Prompts to switch between Short Term and Medium Term modes.')
-    pdf.table_row('Short Term Mode', 'Sets mode to SHORT in config.json immediately.')
-    pdf.table_row('Medium Term Mode', 'Sets mode to MEDIUM in config.json immediately.')
-    pdf.table_row('Natural trade (e.g. I bought 100 CNQ at 61)', 'Two-step confirm-then-commit trade logging flow.')
-    pdf.table_row('Any question', 'Generates a live-dossier-backed Q&A response from Gemini.')
-    pdf.ln(2)
-
-    pdf.section_title('7.2  Trade Logging Flow')
-    pdf.body('Trades go through a two-phase confirm-then-commit process to prevent accidental ledger writes:')
-    pdf.bullet('Phase 1 (Stage): Gemini extracts action, ticker, quantity, and price from the message. '
-               'The trade dict is stored in the in-memory pending_trades{chat_id} dict.')
-    pdf.bullet('Phase 2 (Commit): User replies YES. The daemon calls update_ledger(action, ticker, qty, price). '
-               'This function calls get_acb_and_balances() for current state, validates cash/share sufficiency, '
-               'and appends a new row to trades.csv.')
-    pdf.bullet('Limitation: pending_trades is in-memory only. If the daemon restarts between Phase 1 and Phase 2, '
-               'the staged trade is lost and must be re-entered.')
-    pdf.ln(2)
-
-    pdf.section_title('7.3  update_ledger() Function')
-    pdf.body('This function writes new trade rows to trades.csv. It validates before writing:')
-    pdf.bullet('BUY validation: if cash_bal < cost, raises ValueError("Insufficient cash!")')
-    pdf.bullet('SELL validation: if current_shares < quantity, raises ValueError("Insufficient shares")')
-    pdf.bullet('Appends a CSV row: [Date, Ticker, Action, Quantity, Price, Shares_Balance, Cash_Balance]')
-    pdf.ln(2)
-
-    pdf.section_title('7.4  Market Hours Warning')
-    pdf.body(
-        'When the user sends "analyze" outside of trading hours (9:30 AM to 4:00 PM ET, Mon-Fri), '
-        'the response is prefixed with a warning: "The market is currently closed. This analysis is based '
-        'on the last session\'s closing data." Note: the time check uses local system time and assumes '
-        'the machine is in the ET timezone.'
-    )
-
-    pdf.section_title('7.5  Message Chunking')
-    pdf.body(
-        'Telegram enforces a hard 4096-character limit per message. The send_chunked_reply() async function '
-        'splits any response into 4000-character chunks and sends them sequentially to avoid truncation.'
-    )
-
-    # ============================================================
-    # PAGE 8: SCHEDULED CRON JOBS
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('8. Scheduled Cron Jobs & Automated Tasks')
-
-    pdf.body(
-        'The three scheduled tasks are managed by the Antigravity AI agent using its native schedule tool. '
-        'When a task fires, the Antigravity agent directly executes a Python script to call market_analyzer.generate_dossier(), '
-        'then performs all reasoning natively (no external LLM API required), and delivers the recommendation '
-        'by writing to outgoing_queue.jsonl, which the Telegram daemon reads and sends to the user. '
-        'The advice is also logged to advice_history.txt via log_advice() for context continuity.'
-    )
-
-    pdf.section_title('8.1  Task 1: Hourly Market Scan')
-    pdf.table_row('Parameter', 'Value', header=True)
-    pdf.table_row('Cron Expression', '0 10-15 * * 1-5')
-    pdf.table_row('Schedule', 'Every hour on the hour, 10 AM to 3 PM ET, Monday to Friday')
-    pdf.table_row('Reasoning', 'Antigravity agent native AI (no API key)')
-    pdf.table_row('Output', 'SHORT or MEDIUM mode trading recommendation sent via Telegram')
-    pdf.ln(3)
-
-    pdf.section_title('8.2  Task 2: Pre-Close Market Scan (3:30 PM)')
-    pdf.table_row('Parameter', 'Value', header=True)
-    pdf.table_row('Cron Expression', '30 15 * * 1-5')
-    pdf.table_row('Schedule', 'Every weekday at 3:30 PM ET')
-    pdf.table_row('Reasoning', 'Antigravity agent native AI (no API key)')
-    pdf.table_row('Output', 'Final intraday recommendation before market close. The last advice logged to advice_history.txt for the day.')
-    pdf.ln(3)
-
-    pdf.section_title('8.3  Task 3: End-of-Day Summary (4:05 PM)')
-    pdf.table_row('Parameter', 'Value', header=True)
-    pdf.table_row('Cron Expression', '5 16 * * 1-5')
-    pdf.table_row('Schedule', 'Every weekday at 4:05 PM ET (5 minutes after market close)')
-    pdf.table_row('Reasoning', 'Antigravity agent native AI (EOD summary mode, no API key)')
-    pdf.table_row('Output', 'Holistic EOD summary: portfolio performance for the day and next-day outlook.')
-    pdf.ln(3)
-
-    pdf.section_title('8.4  Advice History: Intraday vs File Retention Policy')
-    pdf.body(
-        'Throughout the day, every recommendation generated by the cron tasks or /analyze command is appended '
-        'to advice_history.txt via the centralized log_advice() function. When get_cleaned_advice_history() runs '
-        '(on every dossier generation), it applies a two-layer retention policy:'
-    )
-    pdf.bullet('PHYSICAL FILE retention: ALL entries for today are preserved. Only the last entry from each '
-               'of the past 5 business days is kept. Weekend entries are silently discarded.')
-    pdf.bullet('LLM CONTEXT passed to Gemini: Only the LAST 5 entries from today (not all of them). '
-               'This keeps the prompt token-efficient while the local log remains complete for review.')
-    pdf.bullet('History limit: Maximum 5 previous business days. Older entries are permanently deleted from the file.')
-
-    # ============================================================
-    # PAGE 9: TRADE LEDGER
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('9. Trade Ledger (trades.csv)')
-
-    pdf.body(
-        'trades.csv is the single source of truth for all financial positions. It is an append-only CSV '
-        'file. The daemon appends new rows via update_ledger(). Manual edits are possible but must preserve '
-        'the column schema exactly.'
-    )
-
-    pdf.section_title('9.1  Schema')
-    pdf.table_row('Column', 'Type', 'Description', header=True)
-    pdf.table_row('Date', 'YYYY-MM-DD HH:MM:SS', 'Timestamp of the trade (local system time).')
-    pdf.table_row('Ticker', 'String', 'TSX ticker symbol, e.g., "CNQ.TO". Always uppercase.')
-    pdf.table_row('Action', 'String', '"BUY", "SELL", or "INIT" (initial portfolio seeding). INIT is treated identically to BUY for ACB purposes.')
-    pdf.table_row('Quantity', 'Float', 'Number of shares traded.')
-    pdf.table_row('Price', 'Float', 'Per-share price at time of trade.')
-    pdf.table_row('Shares_Balance', 'Float', 'Running shares balance for this ticker after the trade. Stored for reference; not used by ACB calculation.')
-    pdf.table_row('Cash_Balance', 'Float', 'Total available free cash after the trade. This is the canonical cash source used by get_acb_and_balances().')
-    pdf.ln(3)
-
-    pdf.section_title('9.2  Example')
-    pdf.code_block(
-        'Date,Ticker,Action,Quantity,Price,Shares_Balance,Cash_Balance\n'
-        '2026-06-14 09:00:00,INIT,INIT,0,0,0,20000.00\n'
-        '2026-06-14 10:30:00,CNQ.TO,BUY,100,62.50,100.0,13750.00\n'
-        '2026-06-15 14:00:00,CNQ.TO,BUY,50,60.12,150.0,10756.00\n'
-        '2026-06-16 11:00:00,CNQ.TO,SELL,30,64.00,120.0,12676.00'
-    )
-
-    pdf.section_title('9.3  Important Notes')
-    pdf.bullet('INIT action: The very first row is typically an INIT action used to seed the initial cash balance. '
-               'The Ticker column value for INIT rows is ignored by the ACB calculation.')
-    pdf.bullet('Cash_Balance is the canonical cash figure: get_acb_and_balances() reads the last Cash_Balance '
-               'value from the file. If this column is ever manually set incorrectly, the cash constraint '
-               'logic will be wrong.')
-    pdf.bullet('The file uses UTF-8 encoding and should use consistent line endings (LF or CRLF). '
-               'Python\'s csv module with newline="" handles this transparently on append.')
-
-    # ============================================================
-    # PAGE 10: ADVICE HISTORY
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('10. Advice History System (advice_history.txt)')
-
-    pdf.body(
-        'advice_history.txt provides the AI with rolling memory of its own recommendations. '
-        'Without it, the AI would have no context about what it said earlier in the day and could '
-        'give contradictory advice. The file uses a simple timestamp-keyed format.'
-    )
-
-    pdf.section_title('10.1  File Format')
-    pdf.code_block(
-        '[2026-06-16 10:00:15]\n'
-        'The TSX market opened with moderate volatility...\n'
-        '1. HOLD CNQ.TO\n'
-        '\n'
-        '[2026-06-16 11:00:22]\n'
-        'Oil prices have recovered slightly...\n'
-        '1. HOLD CNQ.TO\n'
-        '\n'
-        '[2026-06-15 15:30:07]\n'
-        '(Final advice from previous business day)\n'
-        '1. BUY CNQ.TO\n'
-    )
-
-    pdf.section_title('10.2  Writers')
-    pdf.bullet('log_advice(text) in market_analyzer.py: The single canonical writer. Both send_telegram.py '
-               'and telegram_daemon.py import and call this function. It acquires a filesystem lockfile '
-               '(advice.lock) before writing to prevent concurrent write corruption.')
-    pdf.ln(2)
-
-    pdf.section_title('10.3  Pruning (get_cleaned_advice_history)')
-    pdf.body(
-        'On every call, the function: (1) Parses all timestamp blocks via regex. '
-        '(2) Groups entries by calendar date. (3) Rewrites the physical file retaining ALL entries for today '
-        'and only the last entry per day for the last 5 business days. '
-        '(4) Returns a bounded LLM context string with only the last 5 entries from today '
-        '(not all) plus the last prior-day entry per retained date.'
-    )
-
-    pdf.section_title('10.4  Concurrency Safety')
-    pdf.body(
-        'All writes to advice_history.txt now route through log_advice(), which uses OS-level lockfile '
-        'semantics (os.O_CREAT | os.O_EXCL) to guarantee exclusive write access. The lock is released in a '
-        'finally block to prevent stale locks. In the event of a very long lock wait (>5 seconds), '
-        'the write proceeds anyway to prevent advice from being permanently lost.'
-    )
-
-    # ============================================================
-    # PAGE 11: DEPENDENCY REFERENCE
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('11. Dependency Reference (requirements.txt)')
-
-    pdf.table_row('Package', 'Pinned Version', 'Purpose', header=True)
-    pdf.table_row('yfinance', '1.4.1', 'Fetches OHLCV price history and ticker metadata (ex-div dates) from Yahoo Finance.')
-    pdf.table_row('pandas', '3.0.1', 'DataFrame manipulation for price history and indicator computation.')
-    pdf.table_row('pandas-ta', '0.4.71b0', 'Technical Analysis library. Computes EMA, RSI, ATR, SMA, and Bollinger Bands on DataFrames.')
-    pdf.table_row('python-telegram-bot', '22.8', 'Async Telegram Bot API wrapper. Powers the daemon\'s polling loop and message handling.')
-    pdf.table_row('python-dotenv', '1.2.2', 'Reads the .env file and injects variables into os.environ.')
-    pdf.table_row('requests', 'latest', 'HTTP client. Used by send_telegram.py to call the Telegram sendMessage API endpoint.')
-    pdf.table_row('fpdf2', '2.8.7', 'PDF generation library. Used exclusively by generate_pdf.py to produce this document.')
-    pdf.ln(3)
-
-    pdf.section_title('11.1  Installation')
-    pdf.code_block(
-        '# Install all dependencies:\n'
-        'C:\\Users\\Aamir\\miniforge3\\python.exe -m pip install -r requirements.txt'
-    )
-
-    # ============================================================
-    # PAGE 12: SECURITY HARDENING
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('12. Security Hardening')
-
-    pdf.section_title('12.1  Telegram Bot Authorization')
-    pdf.body(
-        'The daemon compares every incoming message\'s chat_id against the TELEGRAM_CHAT_ID value in .env. '
-        'If they do not match, the message is silently dropped (no reply) and a warning is logged to the console. '
-        'This prevents unauthorized users from logging trades or extracting portfolio data even if they '
-        'discover the bot token.'
-    )
-    pdf.code_block(
-        '# In handle_message():\n'
-        'if str(chat_id) != os.getenv("TELEGRAM_CHAT_ID"):\n'
-        '    print(f"Unauthorized access attempt from {chat_id}")\n'
-        '    return'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('12.2  Secrets Management')
-    pdf.bullet('.env is excluded from version control by .gitignore.')
-    pdf.bullet('trades.csv and advice_history.txt are also excluded, as they contain sensitive financial data.')
-    pdf.bullet('No credentials are hardcoded in any .py file. All secrets are read from os.getenv().')
-    pdf.ln(2)
-
-    pdf.section_title('12.3  Input Validation')
-    pdf.bullet('Trade quantity and price are parsed by the Gemini model and then cast to float() with '
-               'explicit error handling. A ValueError terminates processing safely.')
-    pdf.bullet('Ticker validation: The intent-extraction prompt is given the list of valid tickers from config.json, '
-               'instructing the model to only extract trades for configured symbols.')
-    pdf.bullet('Cash and share sufficiency checks in update_ledger() prevent the ledger from entering a '
-               'negative balance state.')
-
-    # ============================================================
-    # PAGE 13: OPERATIONAL RUNBOOK
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('13. Operational Runbook')
-
-    pdf.section_title('13.1  Daily Startup')
-    pdf.code_block(
-        'Step 1: Open File Explorer and navigate to c:\\Users\\Aamir\\OneDrive\\TSX-Trader\n'
-        'Step 2: Double-click start_daemon.bat\n'
-        '        (This runs: C:\\Users\\Aamir\\miniforge3\\python.exe telegram_daemon.py)\n'
-        'Step 3: Verify the console shows: "Daemon listening for Telegram messages..."\n'
-        'Step 4: The Antigravity Agent will automatically send its first\n'
-        '        analysis at 10:00 AM ET via the cron schedule.'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('13.2  Logging a Trade via Telegram')
-    pdf.code_block(
-        'You:  I bought 50 CNQ at 60.50\n'
-        'Bot:  Did you mean to BUY 50.0 shares of CNQ.TO @ $60.50?\n'
-        '      Reply YES to confirm or NO to cancel.\n'
-        'You:  yes\n'
-        'Bot:  Confirmed and Recorded: BUY 50.0 CNQ.TO @ $60.50\n'
-        '      CNQ.TO: 150.0 shares | Cash: $10,681.00'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('13.3  Requesting On-Demand Analysis')
-    pdf.code_block(
-        'You:  analyze\n'
-        'Bot:  Generating on-demand analysis. Please wait...\n'
-        '      [Returns full SHORT or MEDIUM mode recommendation]'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('13.4  Asking a Market Question')
-    pdf.code_block(
-        'You:  What is the current RSI on CNQ?\n'
-        'Bot:  Reading live market data to answer your question...\n'
-        '      [Returns dossier-backed answer from Gemini]'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('13.5  Switching Trading Mode')
-    pdf.code_block(
-        'You:  change mode\n'
-        'Bot:  Please reply with either Short Term Mode or Medium Term Mode.\n'
-        'You:  Medium Term Mode\n'
-        'Bot:  Operating mode successfully updated to: MEDIUM TERM.'
-    )
-    pdf.ln(2)
-
-    pdf.section_title('13.6  Restoring the Agent After Session Loss')
-    pdf.body(
-        'If the Antigravity agent session is lost (e.g., browser closed, session expired), the '
-        'AGENT_RESTORE_INSTRUCTIONS.md file in the project root contains the exact cron expressions '
-        'and prompt text needed to recreate all three scheduled tasks. Open a new session, share the file '
-        'with the agent, and follow its instructions.'
-    )
-
-    # ============================================================
-    # PAGE 14: TROUBLESHOOTING
-    # ============================================================
-    pdf.add_page()
-    pdf.chapter_title('14. Troubleshooting Guide')
-
-    pdf.section_title('14.1  Common Issues')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'Bot is not responding to Telegram messages', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause 1: telegram_daemon.py is not running. Check for the console window or re-run start_daemon.bat.\n'
-             'Cause 2: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env is wrong. Verify with BotFather and your Telegram account.\n'
-             'Cause 3: chat_id mismatch. Check the console for "Unauthorized access attempt" log lines.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'Analysis shows "Error fetching [TICKER]"', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause: Yahoo Finance is temporarily unavailable or the ticker symbol is invalid. '
-             'Wait a few minutes and retry, or verify the ticker in config.json is a valid Yahoo Finance symbol.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'Cron-scheduled messages have stopped arriving', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause: The Antigravity agent session has been lost or the schedule tasks were cancelled. '
-             'Open a new session and use AGENT_RESTORE_INSTRUCTIONS.md to recreate the three cron tasks.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, '"Insufficient cash" error when logging a BUY', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause: The Cash_Balance in trades.csv shows insufficient funds for the trade. '
-             'Check the most recent Cash_Balance value in trades.csv. '
-             'If incorrect due to a manual edit, fix the last row\'s Cash_Balance column.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'ValueError: Invalid action when logging a trade', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause: The Gemini intent-extraction returned an unexpected action value. '
-             'This can happen if the user\'s message is ambiguous. Rephrase the trade clearly: '
-             '"I bought 100 CNQ at 60.12".')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'Telegram messages are being truncated', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('Cause: A very long analysis is being sent by a code path that does not use chunking. '
-             'The daemon\'s send_chunked_reply() handles this for /analyze and Q&A. '
-             'The CLI send_telegram.py also chunks to 4000 characters. If truncation occurs, '
-             'check that the calling code is routing through one of these handlers.')
-
-    pdf.set_font('helvetica', 'B', 10)
-    pdf.cell(0, 6, 'Advice history is empty on first run of the day', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.body('This is expected behaviour. advice_history.txt is populated throughout the day '
-             'as scheduled and on-demand analyses are sent. By the second hourly analysis, '
-             'the AI will have its first advice entry available as context.')
+    pdf.divider()
+    pdf.set_font("helvetica", "I", 9)
+    pdf.set_text_color(150, 155, 170)
+    pdf.multi_cell(0, 5,
+        f"Auto-generated by generate_pdf.py on {GENERATED}.\n"
+        f"TSX Trading Advisor v{VERSION}  |  For operator use only.")
+    pdf.set_text_color(0, 0, 0)
 
     pdf.output("TSX_Assistant_Guide_Final.pdf")
-    print("PDF generated successfully.")
+    print("PDF generated successfully: TSX_Assistant_Guide_Final.pdf")
 
 
 if __name__ == "__main__":

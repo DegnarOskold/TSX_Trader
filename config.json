@@ -13,29 +13,29 @@
             "gold+mining+sector",
             "federal+reserve+interest+rate"
         ],
-        "LLY.TO": [
-            "LLY.TO",
-            "LLY",
-            "GLP-1+weight+loss+drugs",
-            "FDA+drug+approvals"
+        "CP.TO": [
+            "CP.TO",
+            "Canadian+Pacific+Kansas+City",
+            "canadian+railway+sector",
+            "freight+transportation+demand"
         ],
-        "NVDA.TO": [
-            "NVDA.TO",
-            "NVDA",
-            "artificial+intelligence+semiconductors",
-            "AI+chip+demand"
+        "GIB-A.TO": [
+            "GIB-A.TO",
+            "CGI+Inc+IT",
+            "IT+consulting+services",
+            "enterprise+software+spending"
         ],
-        "CSCO.TO": [
-            "CSCO.TO",
-            "CSCO",
-            "enterprise+networking+infrastructure",
-            "tech+sector+earnings"
+        "WCN.TO": [
+            "WCN.TO",
+            "Waste+Connections+Inc",
+            "waste+management+sector",
+            "environmental+services"
         ],
-        "PANW.TO": [
-            "PANW.TO",
-            "PANW",
-            "cybersecurity+sector",
-            "enterprise+cyber+attacks"
+        "CLS.TO": [
+            "CLS.TO",
+            "Celestica+electronics",
+            "electronics+manufacturing+services",
+            "supply+chain+hardware"
         ]
     },
     "stop_loss_pct": 5.0

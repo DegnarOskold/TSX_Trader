@@ -24,6 +24,12 @@ def acquire_advice_lock():
             os.close(fd)
             break
         except FileExistsError:
+            try:
+                if os.path.getmtime(lock_file) < time.time() - 30:
+                    os.remove(lock_file)
+                    continue
+            except OSError:
+                pass
             time.sleep(0.1)
     try:
         yield
@@ -120,6 +126,10 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
             return None
             
         latest = hist.iloc[-1]
+        prev = hist.iloc[-2] if len(hist) > 1 else latest
+        prev_close = prev["Close"]
+        gap_pct = ((latest["Open"] - prev_close) / prev_close) * 100 if prev_close > 0 else 0.0
+        pct_from_low = ((latest["Close"] - latest["Low"]) / latest["Low"]) * 100 if latest["Low"] > 0 else 0.0
         
         if mode == "SHORT":
             hist.ta.ema(length=5, append=True)
@@ -132,6 +142,15 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
             vol_sma_10 = hist["Volume"].rolling(window=10).mean().iloc[-1]
             vol_ratio = (latest["Volume"] / vol_sma_10) if vol_sma_10 > 0 else 1.0
             
+            ema_5 = latest["EMA_5"] if "EMA_5" in latest else 0
+            ema_9 = latest["EMA_9"] if "EMA_9" in latest else 0
+            if ema_5 > ema_9:
+                crossover = "BULLISH (EMA5 > EMA9)"
+            elif ema_5 < ema_9:
+                crossover = "BEARISH (EMA5 < EMA9)"
+            else:
+                crossover = "NEUTRAL"
+            
             # The column names for BBands in pandas_ta can be quirky (e.g., BBL_20_2.0_2.0 or BBL_20_2.0)
             # Find them dynamically
             bb_lower_col = [c for c in hist.columns if c.startswith("BBL_")][0] if any(c.startswith("BBL_") for c in hist.columns) else None
@@ -139,12 +158,16 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
             bb_upper_col = [c for c in hist.columns if c.startswith("BBU_")][0] if any(c.startswith("BBU_") for c in hist.columns) else None
 
             return {
+                "Prev_Close": round(prev_close, 2),
+                "Gap_Pct": round(gap_pct, 2),
+                "Pct_From_Low": round(pct_from_low, 2),
                 "Open": round(latest["Open"], 2),
                 "High": round(latest["High"], 2),
                 "Low": round(latest["Low"], 2),
                 "Price": round(latest["Close"], 2),
                 "Volume": int(latest["Volume"]),
                 "Vol_Ratio": round(vol_ratio, 2),
+                "EMA_Crossover": crossover,
                 "EMA_5": round(latest["EMA_5"], 2) if "EMA_5" in latest else "N/A",
                 "EMA_9": round(latest["EMA_9"], 2) if "EMA_9" in latest else "N/A",
                 "RSI_7": round(latest["RSI_7"], 2) if "RSI_7" in latest else "N/A",
@@ -169,6 +192,9 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
                 ex_div_date = "N/A"
             
             return {
+                "Prev_Close": round(prev_close, 2),
+                "Gap_Pct": round(gap_pct, 2),
+                "Pct_From_Low": round(pct_from_low, 2),
                 "Open": round(latest["Open"], 2),
                 "High": round(latest["High"], 2),
                 "Low": round(latest["Low"], 2),
@@ -181,8 +207,9 @@ def get_stock_data(ticker_symbol, mode="MEDIUM"):
             }
     except Exception as e:
         return {
+            "Prev_Close": "N/A", "Gap_Pct": "N/A", "Pct_From_Low": "N/A",
             "Open": "N/A", "High": "N/A", "Low": "N/A", "Price": "N/A",
-            "Volume": 0, "Vol_Ratio": "N/A", "EMA_5": "N/A", "EMA_9": "N/A",
+            "Volume": 0, "Vol_Ratio": "N/A", "EMA_Crossover": "N/A", "EMA_5": "N/A", "EMA_9": "N/A",
             "RSI_7": "N/A", "ATR_5": "N/A", "BB_Lower": "N/A", "BB_Mid": "N/A",
             "BB_Upper": "N/A", "RSI_14": "N/A", "SMA_50": "N/A", "Ex_Div_Date": "N/A"
         }
@@ -335,14 +362,9 @@ def get_cleaned_advice_history():
                 grouped[date_str] = []
             grouped[date_str].append((timestamp, text.strip()))
             
-        # Determine which past dates to keep (last 5 business days max)
+        # Determine which past dates to keep (last 5 days max)
         past_dates = sorted([d for d in grouped.keys() if d != today_str])
-        business_dates = []
-        for d in past_dates:
-            dt = datetime.datetime.strptime(d, "%Y-%m-%d")
-            if dt.weekday() < 5:
-                business_dates.append(d)
-        dates_to_keep = business_dates[-5:]
+        dates_to_keep = past_dates[-5:]
         
         # Rebuild history
         cleaned_entries = []
@@ -357,22 +379,22 @@ def get_cleaned_advice_history():
             for timestamp, text in cleaned_entries:
                 f.write(f"[{timestamp}]\n{text}\n\n")
             
-    # Build string to return using bounded history
-    history_entries = []
-    for date_str in sorted(grouped.keys()):
-        if date_str == today_str:
-            history_entries.extend(grouped[date_str]) # Keep all from today for the LLM
-        elif date_str in dates_to_keep:
-            history_entries.append(grouped[date_str][-1])
+        # Build string to return using bounded history
+        history_entries = []
+        for date_str in sorted(grouped.keys()):
+            if date_str == today_str:
+                history_entries.extend(grouped[date_str][-5:]) # Keep up to last 5 from today for the LLM
+            elif date_str in dates_to_keep:
+                history_entries.append(grouped[date_str][-1])
+                
+        if not history_entries:
+            return "No previous advice recorded."
             
-    if not history_entries:
-        return "No previous advice recorded."
-        
-    history_str = ""
-    for timestamp, text in history_entries:
-        history_str += f"[{timestamp}]\n{text}\n\n"
-        
-    return history_str.strip()
+        history_str = ""
+        for timestamp, text in history_entries:
+            history_str += f"[{timestamp}]\n{text}\n\n"
+            
+        return history_str.strip()
 
 def generate_dossier():
     config = None
@@ -429,7 +451,9 @@ def generate_dossier():
         dossier += f"  - Avg Purchase Price: {acb_str}\n"
         dossier += f"  - Current Market Price: {price_str}\n"
         if isinstance(market_data, dict):
+            dossier += f"  - Previous Close: ${market_data.get('Prev_Close', 'N/A')} (Gap: {market_data.get('Gap_Pct', 'N/A'):+.2f}%)\n"
             dossier += f"  - Today's Open: ${market_data.get('Open', 'N/A')} | High: ${market_data.get('High', 'N/A')} | Low: ${market_data.get('Low', 'N/A')}\n"
+            dossier += f"  - Intraday Trend: {market_data.get('Pct_From_Low', 'N/A')}% above Low of Day\n"
         dossier += f"  - Unrealised P&L: {pnl_str}\n"
         
         if shares > 0 and pnl_pct < -stop_loss:
@@ -437,6 +461,7 @@ def generate_dossier():
         if isinstance(market_data, dict):
             if mode == "SHORT":
                 dossier += f"  - Vol Ratio (10-day): {market_data.get('Vol_Ratio', 'N/A')}x\n"
+                dossier += f"  - EMA Crossover: {market_data.get('EMA_Crossover', 'N/A')}\n"
                 dossier += f"  - EMA (5-day): ${market_data.get('EMA_5', 'N/A')}\n"
                 dossier += f"  - EMA (9-day): ${market_data.get('EMA_9', 'N/A')}\n"
                 dossier += f"  - RSI (7-day): {market_data.get('RSI_7', 'N/A')}\n"

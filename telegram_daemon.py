@@ -5,13 +5,13 @@ import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from market_analyzer import log_advice
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRADES_FILE = "trades.csv"
-
-# Global state for pending trades (if handled by external agent, but we can leave this here just in case, or remove it. Better to remove pending trades since Antigravity handles the conversation flow)
+DAEMON_START_TIME = datetime.datetime.now()
 
 
 async def send_chunked_reply(update, text):
@@ -22,18 +22,39 @@ async def send_chunked_reply(update, text):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Trading Daemon online. Tell me about your trades naturally (e.g., 'I sold 20 CNQ at 45.50'). Send /help for more info.")
+    await update.message.reply_text("Trading Daemon online. I am a relay for the Antigravity AI agent. Send /help for more info.")
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🤖 **TSX Trading Advisor Help** 🤖\n\n"
-        "Here's what I can do:\n"
-        "1. **Log Trades**: Just tell me naturally (e.g., 'Bought 100 ABX at 23.50').\n"
-        "2. **Analysis**: Send `analyze` or `analysis` to get a full market breakdown and recommendation.\n"
-        "3. **Change Mode**: Send `change mode` to switch between Short and Medium term horizons.\n"
-        "4. **Q&A**: Ask any question about the market or your portfolio, and I'll answer based on the live dossier."
+        "I am a message relay for the Antigravity AI agent. Any message you send will be processed by the AI.\n"
+        "You can:\n"
+        "1. **Log Trades**: Naturally (e.g., 'Bought 100 ABX at 23.50').\n"
+        "2. **Analyze**: Ask for a market breakdown.\n"
+        "3. **Q&A**: Ask any questions about the portfolio.\n\n"
+        "Commands:\n"
+        "/status - Check daemon health and queue size"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uptime = datetime.datetime.now() - DAEMON_START_TIME
+    in_q = 0
+    out_q = 0
+    if os.path.exists("incoming_queue.jsonl"):
+        with open("incoming_queue.jsonl", "r") as f:
+            in_q = len(f.readlines())
+    if os.path.exists("outgoing_queue.jsonl"):
+        with open("outgoing_queue.jsonl", "r") as f:
+            out_q = len(f.readlines())
+            
+    status_text = (
+        f"🟢 **Daemon Status: ONLINE**\n"
+        f"Uptime: {uptime}\n"
+        f"Incoming Queue: {in_q} messages\n"
+        f"Outgoing Queue: {out_q} messages"
+    )
+    await update.message.reply_text(status_text, parse_mode="Markdown")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
@@ -80,6 +101,12 @@ async def poll_outgoing_queue(context: ContextTypes.DEFAULT_TYPE):
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             for chunk in chunks:
                 await context.bot.send_message(chat_id=chat_id, text=chunk)
+                
+            # Centralized logging: everything the agent says is recorded to history
+            try:
+                log_advice(text)
+            except Exception as log_err:
+                print("Error logging advice:", log_err)
         except Exception as e:
             print("Error sending queued message:", e)
             failed_lines.append(line)
@@ -104,6 +131,7 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Start polling job for outgoing messages

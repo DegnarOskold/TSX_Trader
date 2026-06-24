@@ -20,18 +20,10 @@ def main():
                     lines = f.readlines()
                     
                 if lines:
-                    first_msg = lines.pop(0)
-                    
-                    if lines:
-                        with open(QUEUE_FILE, 'a') as f:
-                            for line in lines:
-                                f.write(line)
-                                
+                    for line in lines:
+                        if line.strip():
+                            print(f"NEW_MESSAGE:{line.strip()}", flush=True)
                     os.remove(PROCESSING_FILE)
-                    
-                    if first_msg.strip():
-                        print(f"NEW_MESSAGE:{first_msg.strip()}", flush=True)
-                        sys.exit(0)
                 else:
                     os.remove(PROCESSING_FILE)
         except Exception:
