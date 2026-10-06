@@ -1,8 +1,8 @@
-﻿from fpdf import FPDF
+from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 import datetime
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 GENERATED = datetime.datetime.now().strftime("%B %d, %Y")
 
 class PDF(FPDF):
@@ -165,23 +165,23 @@ def create_pdf():
     pdf.body(
         "TSX Trading Advisor is a zero-cost, single-user autonomous stock trading assistant "
         "for Canadian equities on the Toronto Stock Exchange. It continuously monitors a user-defined "
-        "portfolio, fetches live market data and news, and delivers scheduled AI-generated "
-        "BUY/SELL/HOLD recommendations via Telegram.\n\n"
-        "The system runs entirely locally on a Windows machine using Python. There are no cloud "
+        "portfolio, fetches live market data and macro news, and delivers scheduled AI-generated "
+        "BUY/SELL/HOLD recommendations and End-of-Day recaps via Telegram.\n\n"
+        "The system runs entirely locally on a Windows machine using Python (Miniforge). There are no cloud "
         "services, no subscription fees, and no external AI API keys. All AI reasoning is performed "
         "natively by the Antigravity agent session."
     )
     pdf.section_title("Key Characteristics")
-    pdf.bullet("Horizon: SHORT TERM (1-week momentum and mean-reversion)")
-    pdf.bullet("Data: Live prices, technical indicators, and news fetched every 30 minutes")
-    pdf.bullet("Delivery: Telegram Bot messages to the operator's phone")
+    pdf.bullet("Horizon: SHORT TERM (1-week momentum and mean-reversion setups)")
+    pdf.bullet("Data: Live prices, indicators, and macro context fetched at 30-minute intervals")
+    pdf.bullet("Delivery: Telegram Bot notifications directly to the operator's phone")
     pdf.bullet("Control: Operator logs trades via natural language text messages to the bot")
-    pdf.bullet("Portfolio: Configurable tickers in config.json")
-    pdf.bullet("Scheduling: 30-minute scans (10:00 AM - 3:30 PM ET) + EOD summary (4:05 PM ET)")
+    pdf.bullet("Portfolio: Configurable list of TSX tickers and commodity monitors in config.json")
+    pdf.bullet("Scheduling: 30-minute scans (9:30 AM - 4:00 PM ET) + EOD summary (4:05 PM ET)")
     pdf.ln(2)
     pdf.section_title("What the System Does NOT Do")
-    pdf.bullet("It does NOT execute trades automatically. All trades must be placed manually.")
-    pdf.bullet("It does NOT access broker APIs or brokerage accounts.")
+    pdf.bullet("It does NOT execute trades automatically. All trades must be placed manually by the operator.")
+    pdf.bullet("It does NOT access broker APIs or hold private brokerage credentials.")
     pdf.warn_box(
         "IMPORTANT: This tool provides AI-generated trading suggestions only. "
         "All investment decisions are the sole responsibility of the operator."
@@ -193,28 +193,23 @@ def create_pdf():
     pdf.section_title("2.1 High-Level Architecture")
     pdf.body(
         "The system is split into three distinct layers: a deterministic Data Engine, "
-        "an AI Reasoning Layer, and a Telegram Delivery Layer. These communicate via local "
-        "JSONL queue files, creating a clean, fault-tolerant bridge."
+        "an AI Reasoning Layer, and a Telegram Delivery Layer. Communication is mediated via local "
+        "JSONL queue files and standard output streams, creating a clean, fault-tolerant bridge."
     )
     pdf.code_block(
         "  [Telegram User]\n"
         "       |\n"
         "       v  (sends message)\n"
-        "  [telegram_daemon.py]  <--- Runs 24/7 via start_daemon.bat\n"
+        "  [telegram_daemon.py]  <--- One-Shot Mode (streams NEW_MESSAGE to stdout)\n"
         "       |\n"
-        "       v  (writes to)\n"
-        "  [incoming_queue.jsonl]\n"
-        "       |\n"
-        "       v  (monitored by)\n"
-        "  [file_watcher.py]  <--- Background process, loops continuously\n"
-        "       |\n"
-        "       v  (prints NEW_MESSAGE to stdout, wakes)\n"
+        "       +--------------------+ (wakes agent session directly or via queue)\n"
+        "       v                    v\n"
         "  [Antigravity Agent]  <--- The AI brain\n"
         "       |\n"
-        "       +--> runs market_analyzer.generate_dossier()\n"
-        "       +--> reasons natively, writes analysis\n"
+        "       +--> runs send_interval_scan.py / market_analyzer.py\n"
+        "       +--> reasons natively, evaluates rules & macro context\n"
         "       |\n"
-        "       v  (writes to)\n"
+        "       v  (writes response)\n"
         "  [outgoing_queue.jsonl]\n"
         "       |\n"
         "       v  (polled every 2s by)\n"
@@ -224,8 +219,8 @@ def create_pdf():
     pdf.section_title("2.2 Scheduled Analysis Flow")
     pdf.table_header([("Task", 55), ("Cron Expression", 65), ("Description", 70)])
     sched = [
-        ("30-min Market Scan", "0,30 10-15 * * 1-5", "Full dossier + BUY/SELL/HOLD"),
-        ("End-of-Day Summary", "5 16 * * 1-5", "Portfolio recap + next-day outlook"),
+        ("30-min Market Scan", "*/30 9-16 * * 1-5", "Full portfolio scan, true P&L, BUY/SELL signals"),
+        ("End-of-Day Summary", "5 16 * * 1-5", "Portfolio recap, realized trades, next-day watchlist"),
     ]
     for i, (a, b, c) in enumerate(sched):
         pdf.table_row([(a, 55), (b, 65), (c, 70)], shade=(i % 2 == 1))
@@ -249,11 +244,13 @@ def create_pdf():
     pdf.section_title("3.1 Core Python Scripts")
     pdf.table_header([("File", 58), ("Role", 132)])
     files = [
-        ("market_analyzer.py", "Core data engine: prices, indicators, dossier, advice history, prompt templates"),
-        ("telegram_daemon.py", "Telegram bot relay: receives messages, polls queue, sends responses, logs all advice"),
-        ("file_watcher.py", "Queue bridge: loops continuously, watches incoming_queue.jsonl, wakes agent on new messages"),
-        ("generate_pdf.py", "Documentation generator: produces this PDF from source"),
-        ("quiet_watchdog.py", "Optional: monitors file_watcher.py process and restarts it if it crashes (checks every 10 min)"),
+        ("market_analyzer.py", "Core data engine: prices, indicators, tripartite macro news, dossier generator"),
+        ("send_interval_scan.py", "30-min interval scan script: calculates equity/P&L, checks signals, dispatches to Telegram"),
+        ("send_eod_summary.py", "EOD summary script: cumulative realized P&L, trade recap, commodity wrap, watchlist"),
+        ("telegram_daemon.py", "Telegram bot relay: one-shot listener, polls outgoing queue, sends messages, logs advice"),
+        ("file_watcher.py", "Daemon monitor bridge: loops continuously, watches incoming messages to wake agent"),
+        ("generate_pdf.py", "Documentation generator: produces this technical manual from source"),
+        ("queue_reply.py", "Utility script: quickly queues responses into outgoing_queue.jsonl"),
     ]
     for i, (a, b) in enumerate(files):
         pdf.table_row([(a, 58), (b, 132)], shade=(i % 2 == 1))
@@ -261,14 +258,13 @@ def create_pdf():
     pdf.section_title("3.2 Configuration and Data Files")
     pdf.table_header([("File", 58), ("Purpose", 132)])
     configs = [
-        ("config.json", "Portfolio tickers, news search terms, operating mode (SHORT/MEDIUM), stop-loss %"),
-        ("trades.csv", "Trade ledger: BUY/SELL history, Adjusted Cost Base, running cash balance"),
+        ("config.json", "Portfolio ticker list, macro commodities (CL=F, GC=F, HG=F), mode (SHORT), stop-loss %"),
+        ("trades.csv", "Trade ledger: BUY/SELL/DEPOSIT/DIVIDEND history, Adjusted Cost Base, running cash balance"),
         ("advice_history.txt", "Rolling log of all AI advice sent to Telegram"),
         (".env", "Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PIN, TELEGRAM_PIN_HINT"),
-        (".gitignore", "Excludes .env, *.lock, __pycache__, queue files from git"),
-        ("requirements.txt", "Python dependencies for pip installation (includes psutil)"),
-        ("start_daemon.bat", "Windows launcher: double-click to start telegram_daemon.py"),
-        ("AGENT_RESTORE_INSTRUCTIONS.md", "Step-by-step AI session restore guide"),
+        (".gitignore", "Excludes .env, *.lock, *.log, __pycache__, cache JSONs, queue files from git"),
+        ("requirements.txt", "Python dependencies for pip installation (yfinance, pandas, fpdf2, python-dotenv)"),
+        ("AGENT_RESTORE_INSTRUCTIONS.md", "Step-by-step AI session restore guide for agent restarts"),
         (".agents/AGENTS.md", "Persistent agent rules: trading strategy overrides and security protocol"),
     ]
     for i, (a, b) in enumerate(configs):
@@ -285,52 +281,49 @@ def create_pdf():
     ]
     for i, (a, b) in enumerate(queues):
         pdf.table_row([(a, 58), (b, 132)], shade=(i % 2 == 1))
-    pdf.note_box("Queue files are ephemeral and not committed to git. Created automatically at runtime.")
+    pdf.note_box("Queue files and cache JSON files are ephemeral and excluded by .gitignore.")
 
     # CHAPTER 4: CONFIG.JSON
     pdf.add_page()
     pdf.chapter_title("4", "Configuration Reference (config.json)")
-    pdf.body("config.json is the single control plane for the system.")
+    pdf.body("config.json provides a streamlined configuration structure:")
     pdf.code_block(
         "{\n"
         "  \"mode\": \"SHORT\",\n"
-        "  \"stop_loss_pct\": 5.0,\n"
-        "  \"portfolio\": {\n"
-        "    \"CNQ.TO\": [\n"
-        "      \"CNQ.TO\",\n"
-        "      \"CL=F\",\n"
-        "      \"canadian+oil+sector\",\n"
-        "      \"OPEC+oil+production\"\n"
-        "    ],\n"
-        "    \"CLS.TO\": [\n"
-        "      \"CLS.TO\",\n"
-        "      \"Celestica+electronics\",\n"
-        "      \"electronics+manufacturing+services\",\n"
-        "      \"supply+chain+hardware\"\n"
-        "    ]\n"
-        "  }\n"
+        "  \"portfolio\": [\n"
+        "    \"CNQ.TO\",\n"
+        "    \"ABX.TO\",\n"
+        "    \"CP.TO\",\n"
+        "    \"CLS.TO\",\n"
+        "    \"SHOP.TO\",\n"
+        "    \"CNR.TO\"\n"
+        "  ],\n"
+        "  \"macro_commodities\": [\n"
+        "    \"CL=F\",\n"
+        "    \"GC=F\",\n"
+        "    \"HG=F\"\n"
+        "  ],\n"
+        "  \"stop_loss_pct\": 5.0\n"
         "}"
     )
     pdf.section_title("Fields")
     pdf.table_header([("Field", 50), ("Type", 30), ("Description", 110)])
     flds = [
         ("mode", "string", "\"SHORT\" (1-week momentum) or \"MEDIUM\" (2-4 week swing). Controls indicators used."),
-        ("stop_loss_pct", "float", "If a position drops this % below ACB, a mandatory SELL directive is injected into the dossier."),
-        ("portfolio", "object", "Keys are ticker symbols. Values are arrays of news search topics."),
+        ("portfolio", "array", "Array of equity ticker symbols on the TSX to actively track and analyze."),
+        ("macro_commodities", "array", "Key commodities (Crude Oil, Gold, Copper) tracked for sector sentiment."),
+        ("stop_loss_pct", "float", "Baseline stop-loss threshold percentage (typically 5.0%)."),
     ]
     for i, (a, b, c) in enumerate(flds):
         pdf.table_row([(a, 50), (b, 30), (c, 110)], shade=(i % 2 == 1))
     pdf.ln(3)
-    pdf.section_title("Portfolio News Topics (per-ticker array)")
+    pdf.section_title("Consolidated Tripartite Macro Briefing")
     pdf.body(
-        "Each entry in the array can be:\n"
-        "  - A ticker symbol (e.g. \"CNQ.TO\") - fetched from Yahoo Finance RSS\n"
-        "  - A commodity symbol (e.g. \"CL=F\") - used as a macro price tracker\n"
-        "  - A plain-text search term (e.g. \"canadian+oil+sector\") - searched on Google News"
-    )
-    pdf.warn_box(
-        "Use full company names for Google News terms, not bare tickers. "
-        "\"Canadian+Pacific+Kansas+City\" returns far more relevant results than \"CP\"."
+        "Instead of spamming individual news feeds for dozens of stocks, the engine synthesizes "
+        "a single high-level tripartite macroeconomic briefing across:\n"
+        "  1. Canada Macro: Bank of Canada policy, TSX composite trends, domestic CPI/inflation.\n"
+        "  2. USA Macro: Federal Reserve rate expectations, US labor/inflation data, S&P 500 sentiment.\n"
+        "  3. World / Global Macro: Geopolitical events, global trade dynamics, central banks, and commodity supplies."
     )
 
     # CHAPTER 5: DOSSIER STRUCTURE
@@ -338,19 +331,19 @@ def create_pdf():
     pdf.chapter_title("5", "Market Dossier Structure")
     pdf.body(
         "The dossier is a structured plain-text document generated by market_analyzer.generate_dossier() "
-        "on every scheduled scan or manual analysis request. It contains five sections."
+        "on every scheduled scan or manual analysis request. It contains five key sections."
     )
     pdf.section_title("Section 1: Mode and Timestamp")
     pdf.code_block(
         "=== CURRENT MODE: SHORT TERM (1-WEEK HORIZON) ===\n"
-        "Date: 2026-06-23 14:30:01 ET"
+        "Date: 2026-10-05 15:30:00 ET"
     )
     pdf.section_title("Section 2: Portfolio and Pricing (per ticker)")
     pdf.table_header([("Field", 70), ("Description", 120)])
     dossier_fields = [
         ("Shares Owned", "From trades.csv ledger"),
         ("Avg Purchase Price (ACB)", "Adjusted Cost Base computed from trade history"),
-        ("Current Market Price", "Live price from yfinance"),
+        ("Current Market Price", "Live price with multi-tier fallback (1d -> 5d -> ACB)"),
         ("Previous Close", "Prior day closing price"),
         ("Gap %", "Overnight gap: (Open - PrevClose) / PrevClose"),
         ("Open / High / Low", "Intraday OHLC from yfinance"),
@@ -368,64 +361,43 @@ def create_pdf():
     for i, (a, b) in enumerate(dossier_fields):
         pdf.table_row([(a, 70), (b, 120)], shade=(i % 2 == 1))
     pdf.ln(2)
-    pdf.note_box("In MEDIUM mode: RSI (14-day), SMA (50-day), BB (50-period), Ex-Dividend Date are used instead.")
     pdf.section_title("Section 3: Macro Commodities")
-    pdf.body("Commodity symbols (e.g. CL=F, GC=F) are shown as a standalone macro context with current price and daily % change vs open.")
-    pdf.section_title("Section 4: Qualitative News (up to 10 headlines per topic)")
-    pdf.bullet("[NEW] = published within the last 4 hours")
-    pdf.bullet("[RECENT] = published 4-12 hours ago")
-    pdf.bullet("[OLD] = published 12-48 hours ago")
-    pdf.bullet("[MACRO], [EARNINGS], [ANALYST], or [NEWS] category label")
-    pdf.bullet("200-character summary from the RSS description field")
+    pdf.body("Commodity symbols (CL=F, GC=F, HG=F) are displayed with current price and daily % change to align sector entries.")
+    pdf.section_title("Section 4: Tripartite Macroeconomic News Briefing")
+    pdf.bullet("Structured into Canada, USA, and World news pillars.")
+    pdf.bullet("[NEW] (<=4h), [RECENT] (4-12h), [OLD] (12-48h) publication badges.")
+    pdf.bullet("Category badges: [MACRO], [CENTRAL_BANK], [COMMODITY], [TRADE].")
     pdf.section_title("Section 5: Previous Advice History")
     pdf.body(
         "A rolling window of past AI analysis. The LLM receives up to the last 5 entries from "
-        "today plus the final entry from the preceding 5 calendar days. Weekends are NOT filtered."
+        "today plus the final entry from the preceding 5 calendar days. Preserves cross-session continuity."
     )
 
     # CHAPTER 6: TRADING RULES
     pdf.add_page()
     pdf.chapter_title("6", "AI Trading Rules and Logic")
     pdf.body(
-        "Trading rules live in two locations: system prompt instructions in "
-        "market_analyzer.get_analysis_prompt() and persistent override rules in .agents/AGENTS.md. "
-        "AGENTS.md takes precedence."
+        "Trading rules are defined across system prompt templates in market_analyzer.py and "
+        "persistent overrides in .agents/AGENTS.md. AGENTS.md rules take strict precedence."
     )
-    pdf.section_title("6.1 System Prompt Rules (SHORT mode)")
+    pdf.section_title("6.1 Core Antigravity Execution Guidelines")
     rules = [
-        ("1. No Falling Knives", "EMA5 < EMA9 means a downtrend is active. Do not assume snap-back. Wait for crossover or volume shock before BUY."),
-        ("2. Volume Capitulation", "Vol_Ratio > 1.25 during a drop = panic selling exhausted. Bullish reversal signal."),
-        ("3. Market Open Rule", "Before 9:30 AM ET, never recommend buying. Wait 30 minutes for HFT volatility to settle."),
-        ("4. Buy the Rumour", "Anticipate macro events within 24-48h. Override oversold technicals with HOLD/SELL if event removes a market premium."),
-        ("5. Cash Constraint", "Check Available Free Cash before every BUY. No cash = no BUY."),
-        ("6. Tranching", "Deploy free cash in tranches (e.g. 25%) instead of all at once."),
-        ("7. Stop-Loss Enforcement", "Position > stop_loss_pct% below ACB = MUST SELL, regardless of RSI."),
-        ("8. Profit-Taking", "Position touches Upper Bollinger Band AND RSI > 70 = trim position."),
-        ("9. Zero-Share Rule", "0 shares + no BUY = AVOID or IGNORE (not HOLD)."),
-        ("10. Acknowledge Failures", "If previous advice was wrong, explicitly say so. Do not repeat a failed thesis."),
-        ("11. Macro Override", "RSI < 25 + top-tier macro catalyst = Speculative Macro Entry allowed (small position)."),
+        ("Target Sell & Stop Loss on BUY", "Every BUY must provide a Target Sell Price (Mid-BB or +1.5 ATR target, whichever is > purchase price) and -5% Stop Loss."),
+        ("Macro-Alignment Rule", "Before buying commodity-linked stocks (AEM, CNQ), the underlying commodity (GC=F, CL=F) MUST be green on the day."),
+        ("Strict Overbought Filter", "If 7-day RSI > 75, NEVER BUY. If RSI is 65-75, only buy if Vol Ratio > 1.25x."),
+        ("ADX Trend Filter", "BUY requires 14-day ADX > 20 unless Vol Ratio > 1.25x (volume surge exception)."),
+        ("Low-Volume Scaled Entry", "Bullish EMA crossover with Vol Ratio <= 1.25x: allowed only with scaled position (25-50% allocation)."),
+        ("Stagnation Exit", "Position held >4 trading days, negative, and flashes bearish EMA crossover: SELL immediately to recycle capital."),
+        ("Profit Target Breakeven Flag", "If an open position gains >2.0% above purchase price, flag to user to raise Stop Loss to Breakeven."),
+        ("Time-of-Day Filter", "Never initiate new BUY signals between 11:30 AM and 2:00 PM ET (lunch fake-out zone)."),
+        ("Volume Capitulation", "Vol Ratio > 1.25x during a drop indicates panic selling exhausted; valid reversal signal."),
+        ("Intraday Reversal Trigger", "Intraday drop >1.25% below open + RSI < 35 with immediate 2-interval rebound: allows speculative entry."),
     ]
     for title, desc in rules:
         pdf.set_font("helvetica", "B", 10)
-        pdf.cell(0, 6, f"  Rule {title}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font("helvetica", "", 10)
-        pdf.set_x(pdf.get_x() + 10)
-        pdf.multi_cell(0, 5.5, desc)
-        pdf.ln(1)
-
-    pdf.section_title("6.2 AGENTS.md Persistent Override Rules")
-    agent_rules = [
-        ("Target Sell Price on BUY", "Every BUY must include a Target Sell Price (Upper BB or ATR-based) and Stop Loss Price for the broker."),
-        ("Low-Volume Scaled Entry", "Bullish EMA crossover without high volume: recommend BUY at 25-50% position size, labeled 'Low-Volume Scaled Entry'."),
-        ("Momentum Breakout Exception", "Bullish EMA crossover + RSI > 60 + green sector: Low-Volume Scaled Entry at 25% allocation still allowed."),
-        ("Time-of-Day Filter", "Never initiate Low-Volume Scaled Entry between 11:00 AM and 2:00 PM ET."),
-        ("Intraday Reversal Trigger", "Drop >1.25% below open + RSI < 35 + rebounds within two 30-min intervals: speculative Reversal Buy on partial position."),
-    ]
-    for title, desc in agent_rules:
-        pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, f"  - {title}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("helvetica", "", 10)
-        pdf.set_x(pdf.get_x() + 12)
+        pdf.set_x(pdf.get_x() + 10)
         pdf.multi_cell(0, 5.5, desc)
         pdf.ln(1)
 
@@ -433,112 +405,102 @@ def create_pdf():
     pdf.add_page()
     pdf.chapter_title("7", "Trading Prompt System Instructions")
     pdf.body(
-        "The AI receives one of two prompt templates selected by config.json mode. "
-        "Both embed the full dossier and all system rules inline."
+        "The AI formats responses concisely for mobile Telegram consumption, with dedicated "
+        "scan and summary structures."
     )
-    pdf.section_title("7.1 SHORT Mode Output Format")
-    pdf.bullet("Brief introduction (1 sentence)")
-    pdf.bullet("Prioritised action list: e.g. '1. SELL CNQ.TO, 2. BUY ABX.TO' or 'No immediate actions recommended'")
-    pdf.bullet("Detailed breakdown ONLY for action stocks (max 3 sentences per stock, must include current price)")
+    pdf.section_title("7.1 30-Minute Interval Scan Format")
+    pdf.bullet("Unrealized P&L: Single summary line total at the top of the scan.")
+    pdf.bullet("Portfolio Status: Quick bullet for each open position showing ACB, current price, and gain/loss.")
+    pdf.bullet("Actionable Signals: BUY/SELL alerts with precise Target Price and Stop Loss calculations.")
+    pdf.bullet("Position Sizing: Explicit labeling of Low-Volume Scaled Entries (25-50% allocation).")
     pdf.ln(2)
-    pdf.section_title("7.2 EOD Summary Output Format")
-    pdf.bullet("End-of-Day Market Summary (1-2 sentences)")
-    pdf.bullet("Portfolio Performance: status of all held assets (ignore 0-share positions)")
-    pdf.bullet("Outlook Ahead: 2-3 sentences on tomorrow based on price action, volume, and macro news")
-    pdf.note_box("The EOD prompt explicitly instructs the AI NOT to recommend new trades.")
+    pdf.section_title("7.2 End-of-Day (EOD) Summary Format")
+    pdf.bullet("Total Unrealized P&L and Portfolio Equity.")
+    pdf.bullet("Today's Realized Activity: Profit/loss from any closed trades.")
+    pdf.bullet("Cumulative Performance: Active guidance realized P&L, trade count, and win rate.")
+    pdf.bullet("Commodity & Macro Wrap: Gold, Crude Oil, and copper daily status.")
+    pdf.bullet("Next-Day Watchlist: Actionable setups identified for the following morning's open.")
 
     # CHAPTER 8: SECURITY
     pdf.add_page()
     pdf.chapter_title("8", "Telegram Security Protocol")
     pdf.body(
-        "Because the Telegram bot relays messages directly to the AI agent which can run commands "
-        "and edit files, a PIN challenge protocol is enforced to prevent unauthorized remote code execution."
+        "Because the Telegram bot relays messages directly to the AI agent which has filesystem "
+        "and command capabilities, a cryptographic PIN authentication protocol prevents remote code execution."
     )
-    pdf.section_title("8.1 Triggers Requiring PIN Verification")
-    pdf.bullet("Editing any .py source file")
-    pdf.bullet("Editing .agents/AGENTS.md or .env")
-    pdf.bullet("Running arbitrary system or PowerShell commands")
-    pdf.bullet("Any action modifying the codebase or host system")
+    pdf.section_title("8.1 Remote Modification Challenges")
+    pdf.bullet("Editing any Python (.py) source file.")
+    pdf.bullet("Modifying .agents/AGENTS.md, config.json, or .env.")
+    pdf.bullet("Running arbitrary shell, system, or PowerShell commands.")
+    pdf.bullet("EXCLUSION: Appending or updating trades.csv for user trade logging is exempt.")
     pdf.ln(2)
-    pdf.section_title("8.2 PIN Challenge Flow")
+    pdf.section_title("8.2 Challenge & Verification Workflow")
     pdf.code_block(
-        "  [Telegram: code change request]\n"
+        "  [Telegram User asks for code/system change]\n"
         "         |\n"
         "         v\n"
-        "  AI writes PIN challenge to outgoing_queue.jsonl\n"
+        "  AI halts & writes PIN Challenge to Telegram\n"
         "  (includes TELEGRAM_PIN_HINT from .env)\n"
         "         |\n"
         "         v\n"
         "  [User replies with 8-digit PIN]\n"
         "         |\n"
         "         v\n"
-        "  AI validates against TELEGRAM_PIN in .env\n"
-        "  Correct: proceed  |  Wrong: refuse and log"
+        "  AI verifies against TELEGRAM_PIN in .env\n"
+        "  Match: Executes change  |  Mismatch: Rejects request"
     )
     pdf.section_title("8.3 Local User Exception")
-    pdf.body("Requests from the local Antigravity interface (USER_REQUEST tags) are fully trusted. No PIN required.")
-    pdf.section_title("8.4 Environment Variables")
+    pdf.body("Requests originating directly from the local Antigravity chat interface are fully authenticated and exempt from PIN challenges.")
+    pdf.section_title("8.4 Environment Secrets (.env)")
     pdf.table_header([("Variable", 70), ("Description", 120)])
     env_rows = [
-        ("TELEGRAM_BOT_TOKEN", "API token from @BotFather. Authenticates with the Telegram API."),
-        ("TELEGRAM_CHAT_ID", "Numeric chat ID of the operator. All other chat IDs are rejected."),
-        ("TELEGRAM_PIN", "8-digit PIN for remote code change authentication."),
-        ("TELEGRAM_PIN_HINT", "Hint phrase sent to user when PIN challenge is issued."),
+        ("TELEGRAM_BOT_TOKEN", "Bot authentication token issued by @BotFather."),
+        ("TELEGRAM_CHAT_ID", "Authorized Telegram user ID. All unauthorized IDs are rejected."),
+        ("TELEGRAM_PIN", "8-digit secret PIN required for remote code changes."),
+        ("TELEGRAM_PIN_HINT", "Hint phrase displayed when requesting the PIN challenge."),
     ]
     for i, (a, b) in enumerate(env_rows):
         pdf.table_row([(a, 70), (b, 120)], shade=(i % 2 == 1))
-    pdf.warn_box("NEVER commit .env to git. Listed in .gitignore. Back up your bot token and PIN securely.")
+    pdf.warn_box("NEVER commit .env to git. Always verify .gitignore contains .env.")
 
     # CHAPTER 9: SESSION RESTORE
     pdf.add_page()
     pdf.chapter_title("9", "Session Restore Procedure")
-    pdf.body("If the Antigravity agent session is lost (reboot, context expiry), restore in this order:")
-    pdf.section_title("Step 1: Start the Telegram Daemon (User Action)")
-    pdf.body("Double-click start_daemon.bat, or run:")
+    pdf.body("When restarting or restoring an agent session, follow this streamlined procedure:")
+    pdf.section_title("Step 1: Start Telegram Daemon")
+    pdf.body("Run in the background via run_command:")
     pdf.code_block("C:\\Users\\Aamir\\miniforge3\\python.exe telegram_daemon.py")
-    pdf.section_title("Step 2: Start the File Watcher (Agent Action)")
-    pdf.body("The agent starts file_watcher.py as a background task:")
+    pdf.section_title("Step 2: Start File Watcher")
+    pdf.body("Ensure file_watcher.py is active as a daemon process:")
     pdf.code_block("C:\\Users\\Aamir\\miniforge3\\python.exe file_watcher.py")
-    pdf.note_box("file_watcher.py now runs in a continuous loop and does NOT exit after one message (fixed in v1.0.1).")
-    pdf.section_title("Step 3: Recreate Cron Schedules (Agent Action)")
-    pdf.table_header([("Task", 55), ("CronExpression", 60), ("Prompt Summary", 75)])
+    pdf.section_title("Step 3: Setup Automated Cron Schedules")
+    pdf.table_header([("Task", 55), ("Cron Expression", 60), ("Script Executed", 75)])
     cron = [
-        ("30-min Market Scan", "0,30 10-15 * * 1-5", "[30-min Scan] Dossier + analysis -> outgoing_queue.jsonl"),
-        ("EOD Summary", "5 16 * * 1-5", "[EOD Summary] Dossier + EOD summary -> outgoing_queue.jsonl"),
+        ("30-min Market Scan", "*/30 9-16 * * 1-5", "send_interval_scan.py"),
+        ("End-of-Day Summary", "5 16 * * 1-5", "send_eod_summary.py"),
     ]
     for i, (a, b, c) in enumerate(cron):
         pdf.table_row([(a, 55), (b, 60), (c, 75)], shade=(i % 2 == 1))
     pdf.ln(3)
-    pdf.section_title("Step 4: Verify")
-    pdf.bullet("Send 'Analyze' via Telegram - agent should respond within 30 seconds")
-    pdf.bullet("Send '/status' via Telegram - daemon replies with uptime and queue sizes")
-    pdf.bullet("Check advice_history.txt is being updated after each analysis")
+    pdf.section_title("Step 4: Operational Health Check")
+    pdf.bullet("Run manage_task(Action='list') to verify daemons and schedules are running.")
+    pdf.bullet("Send /status via Telegram to verify daemon connectivity and queue readiness.")
 
     # CHAPTER 10: LIMITATIONS
     pdf.add_page()
     pdf.chapter_title("10", "Known Limitations and Operational Notes")
-    pdf.section_title("10.1 Market Data")
-    pdf.bullet("yfinance prices are delayed approximately 15 minutes for TSX equities.")
-    pdf.bullet("EMA, RSI, ATR indicators lag by one bar (prior day's close). The live price is current but indicators are historical.")
-    pdf.bullet("Intraday High/Low/Open reflect the current trading day only.")
-    pdf.section_title("10.2 News Quality")
-    pdf.bullet("Google News RSS is keyword-based. Use specific company names to minimize irrelevant results.")
-    pdf.bullet("Yahoo Finance RSS is limited to the ticker's own headlines.")
-    pdf.bullet("News older than 48 hours is automatically filtered.")
-    pdf.section_title("10.3 Advice History")
-    pdf.bullet("LLM context window receives last 5 entries from today + final entry from prior 5 calendar days.")
-    pdf.bullet("Weekends are NOT filtered (fixed in v1.0.1). Friday advice is preserved into Monday.")
-    pdf.bullet("advice_history.txt retains full history for human audit.")
-    pdf.section_title("10.4 Operational Constraints")
-    pdf.bullet("System requires the Antigravity agent session to be active during market hours.")
-    pdf.bullet("If the session is lost, incoming_queue.jsonl will accumulate unprocessed messages until restored.")
-    pdf.bullet("quiet_watchdog.py monitors file_watcher.py only - does NOT monitor the daemon or AI session.")
-    pdf.bullet("Very long AI responses are automatically chunked at 4,000 characters per Telegram message.")
-    pdf.section_title("10.5 Trade Logging")
-    pdf.bullet("All trades are logged manually via natural language Telegram messages.")
-    pdf.bullet("Cash balance is always read from the Cash_Balance column of the LAST row in trades.csv.")
-    pdf.bullet("ACB is computed by rolling forward every row in trades.csv from the beginning.")
-    pdf.bullet("Do not insert rows in the middle of trades.csv - this will corrupt the cash balance.")
+    pdf.section_title("10.1 Market Data & API Fallbacks")
+    pdf.bullet("yfinance TSX quotes have ~15-minute standard market delay.")
+    pdf.bullet("Empty 1-day history frames at open are protected by automated 5-day and cost-basis fallbacks.")
+    pdf.bullet("Intraday High/Low/Open reflect the current day's active bar.")
+    pdf.section_title("10.2 Trade Ledger Integrity (trades.csv)")
+    pdf.bullet("All trades are logged in chronological order.")
+    pdf.bullet("Cash balance is derived from the latest row's Cash_Balance column.")
+    pdf.bullet("Adjusted Cost Base (ACB) is rolled forward cumulatively across all buy/sell transactions.")
+    pdf.section_title("10.3 Background Daemons")
+    pdf.bullet("file_watcher.py runs continuously to bridge queue changes.")
+    pdf.bullet("telegram_daemon.py processes incoming user instructions and flushes outgoing responses.")
+    pdf.bullet("Long Telegram messages are automatically chunked at 4,000 characters to comply with API limits.")
 
     pdf.divider()
     pdf.set_font("helvetica", "I", 9)
