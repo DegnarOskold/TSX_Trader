@@ -1,42 +1,30 @@
 {
     "mode": "SHORT",
-    "portfolio": {
-        "CNQ.TO": [
-            "CNQ.TO",
-            "CL=F",
-            "canadian+oil+sector",
-            "OPEC+oil+production"
-        ],
-        "ABX.TO": [
-            "ABX.TO",
-            "GC=F",
-            "gold+mining+sector",
-            "federal+reserve+interest+rate"
-        ],
-        "CP.TO": [
-            "CP.TO",
-            "Canadian+Pacific+Kansas+City",
-            "canadian+railway+sector",
-            "freight+transportation+demand"
-        ],
-        "GIB-A.TO": [
-            "GIB-A.TO",
-            "CGI+Inc+IT",
-            "IT+consulting+services",
-            "enterprise+software+spending"
-        ],
-        "WCN.TO": [
-            "WCN.TO",
-            "Waste+Connections+Inc",
-            "waste+management+sector",
-            "environmental+services"
-        ],
-        "CLS.TO": [
-            "CLS.TO",
-            "Celestica+electronics",
-            "electronics+manufacturing+services",
-            "supply+chain+hardware"
-        ]
-    },
+    "portfolio": [
+        "CNQ.TO",
+        "ABX.TO",
+        "CP.TO",
+        "GIB-A.TO",
+        "WCN.TO",
+        "CLS.TO",
+        "SHOP.TO",
+        "AEM.TO",
+        "CNR.TO",
+        "CCO.TO",
+        "CSU.TO",
+        "TECK-B.TO",
+        "SAP.TO",
+        "TIH.TO",
+        "CCL-B.TO",
+        "ATRL.TO",
+        "ATZ.TO",
+        "STN.TO",
+        "FNV.TO"
+    ],
+    "macro_commodities": [
+        "CL=F",
+        "GC=F",
+        "HG=F"
+    ],
     "stop_loss_pct": 5.0
 }

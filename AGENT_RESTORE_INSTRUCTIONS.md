@@ -11,7 +11,7 @@ This project is an autonomous stock trading advisor tracking the user's dynamic 
 * **Environment Variables:** Credentials (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) are stored in `.env`.
 
 ## 2. Background Listener (User Action)
-The `telegram_daemon.py` script listens to the user's Telegram messages, uses the Gemini API to parse natural language trades, and updates `trades.csv`.
+The `telegram_daemon.py` script listens to the user's Telegram messages, relays them to `incoming_queue.jsonl` for the Antigravity AI agent to process, and delivers AI-generated responses from `outgoing_queue.jsonl` back to Telegram.
 * **To Start:** The user simply needs to double-click `start_daemon.bat` OR run:
   ```bash
   C:\Users\Aamir\miniforge3\python.exe telegram_daemon.py
