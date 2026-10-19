@@ -169,15 +169,9 @@ for block in blocks:
                 is_restricted_time = True
                 
             if 'BULLISH' in cross:
-                # STRICT OVERBOUGHT FILTER
-                if rsi > 75:
-                    rsi_pass = False
-                elif rsi > 65:
-                    rsi_pass = (vol_ratio > 1.25)
-                else:
-                    rsi_pass = True
-                    
-                adx_pass = (adx > 20) or (vol_ratio > 1.25)
+                # STRICT OVERBOUGHT & ADX FILTER (No double-bypass on volume)
+                rsi_pass = (rsi <= 65) or (rsi <= 75 and vol_ratio > 1.25 and adx > 20)
+                adx_pass = (adx > 20) or (vol_ratio > 1.25 and rsi <= 65)
                 
                 if rsi_pass and adx_pass:
                     if is_commodity_aligned(ticker) and not is_restricted_time:

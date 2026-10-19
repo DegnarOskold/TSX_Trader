@@ -177,12 +177,14 @@ def get_stock_data(ticker_symbol, mode="MEDIUM", prefetched_hist=None):
         if mode == "SHORT":
             hist.ta.ema(length=5, append=True)
             hist.ta.ema(length=9, append=True)
+            hist.ta.sma(length=50, append=True)
             hist.ta.rsi(length=7, append=True)
             hist.ta.atr(length=5, append=True)
             hist.ta.bbands(length=20, std=2, append=True)
             hist.ta.adx(length=14, append=True)
             
             latest = hist.iloc[-1]
+            prev = hist.iloc[-2] if len(hist) > 1 else latest
             
             if len(hist) > 10:
                 vol_sma_10 = hist["Volume"].iloc[:-1].tail(10).mean()
@@ -207,10 +209,19 @@ def get_stock_data(ticker_symbol, mode="MEDIUM", prefetched_hist=None):
             else:
                 vol_ratio = (latest["Volume"] / vol_sma_10) if vol_sma_10 > 0 else 1.0
             
+            price = latest["Close"]
             ema_5 = latest["EMA_5"] if "EMA_5" in latest else 0
             ema_9 = latest["EMA_9"] if "EMA_9" in latest else 0
+            prev_ema_5 = prev["EMA_5"] if "EMA_5" in prev else ema_5
+            dmp_14 = latest["DMP_14"] if "DMP_14" in latest else 0
+            dmn_14 = latest["DMN_14"] if "DMN_14" in latest else 0
+            sma_50 = latest["SMA_50"] if "SMA_50" in latest and pd.notna(latest["SMA_50"]) else 0
             if ema_5 > ema_9:
-                crossover = "BULLISH (EMA5 > EMA9)"
+                sma50_ceiling = (sma_50 > 0 and ema_9 < sma_50 and abs(price - sma_50) / sma_50 <= 0.015)
+                if price >= ema_5 and ema_5 > prev_ema_5 and dmp_14 > dmn_14 and (price - ema_5) / ema_5 <= 0.03 and not sma50_ceiling:
+                    crossover = "BULLISH (EMA5 > EMA9)"
+                else:
+                    crossover = "NEUTRAL (FILTERED)"
             elif ema_5 < ema_9:
                 crossover = "BEARISH (EMA5 < EMA9)"
             else:
