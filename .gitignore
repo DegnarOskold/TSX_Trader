@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Local Data Ledgers
+trades.csv
+advice_history.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# Temporary, Log & Cache Files
+temp_dossier*.txt
+dossier_debug.txt
+prompt.txt
+*.lock
+*.jsonl
+*.log
+news_cache.json
+macro_news_cache.json
+corporate_calendar_cache.json
+.advice_last_prune

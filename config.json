@@ -19,7 +19,20 @@
         "ATRL.TO",
         "ATZ.TO",
         "STN.TO",
-        "FNV.TO"
+        "FNV.TO",
+        "SU.TO",
+        "IMO.TO",
+        "CVE.TO",
+        "TFII.TO",
+        "RUS.TO",
+        "DSG.TO",
+        "KXS.TO",
+        "ENGH.TO",
+        "WPM.TO",
+        "PAAS.TO",
+        "AGI.TO",
+        "WFG.TO",
+        "RCH.TO"
     ],
     "macro_commodities": [
         "CL=F",

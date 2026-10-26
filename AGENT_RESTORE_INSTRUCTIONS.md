@@ -26,22 +26,17 @@ C:\Users\Aamir\miniforge3\python.exe file_watcher.py
 ```
 This script acts as the bridge connecting the Telegram Daemon to your chat context!
 
-**You MUST also use your native `schedule` tool to immediately recreate the following three background cron tasks:**
+**You MUST also use your native `schedule` tool to immediately recreate the following two background cron tasks:**
 
-### Task 1: 30-Minute Market Scan
-* **CronExpression:** `0,30 10-15 * * 1-5`
+### Task 1: 30-Minute Interval Market Scan
+* **CronExpression:** `*/30 9-16 * * 1-5`
 * **Prompt:** 
-  > [30-min Scan] Execute a 30-minute interval market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
+  > Trigger: Interval Scan. Please run the `send_interval_scan.py` script to generate market updates. Also, as per AGENTS.md, check your running tasks using `manage_task(Action='list')` and restart `file_watcher.py` if it is not actively running.
 
-### Task 2: Pre-Close Market Scan
-* **CronExpression:** `30 15 * * 1-5`
-* **Prompt:** 
-  > [3:30 PM Scan] Execute a pre-close market analysis! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your trading analysis based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script. Be sure to format your analysis correctly and concise!
-
-### Task 3: End-of-Day Summary
+### Task 2: End-of-Day (EOD) Summary
 * **CronExpression:** `5 16 * * 1-5`
 * **Prompt:** 
-  > [EOD Summary] Execute the End-of-Day summary! Please read the live dossier by executing a python script to import and run `market_analyzer.generate_dossier()`. Write your EOD summary based on the dossier using your own brain, and push your response JSON to `outgoing_queue.jsonl` using a python script.
+  > Trigger: End-of-Day (EOD) Summary. Please run the `send_eod_summary.py` script to generate the EOD summary. Also, as per AGENTS.md, check your running tasks using `manage_task(Action='list')` and restart `file_watcher.py` if it is not actively running.
 
 ## 4. Operational Notes
 * **Native Antigravity Engine:** The scheduled tasks rely exclusively on Antigravity reading the dossier and generating the response natively to avoid external API limits.
