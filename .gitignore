@@ -19,4 +19,5 @@ prompt.txt
 news_cache.json
 macro_news_cache.json
 corporate_calendar_cache.json
+daily_nav.json
 .advice_last_prune
